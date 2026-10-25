@@ -1,6 +1,6 @@
 """
 Multi-City Lighting — Graph Colouring as a CSP
-See README.md for the overview and team tasks.
+See projectoverview.md for the overview and team tasks.
 
     BLOCK 0  Shared                       (everyone — agree first, then freeze)
     BLOCK 1  Map, A1, plots               (Person 1)
