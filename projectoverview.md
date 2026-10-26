@@ -1,115 +1,230 @@
 # Multi-City Lighting — Graph Colouring as a CSP
 
-Modern AI Assignment · Chapter 4: Constraint Satisfaction Problems
+Modern AI Group Assignment · Topic: Constraint Satisfaction Problems
 
-## 1. What the program does
+This document describes the project requirements, how the program works, the three methods that are compared, the theory behind them, and how the work is divided.
 
-1. Place *n* random cities on a 2D map and connect them with the maximum number of straight, non-crossing roads.
-2. Colour ("light") every city so that two cities joined by a road never share a colour:
-   - with **3 colours**: Red, Green, Blue
-   - with **4 colours**: Red, Green, Blue, Yellow
-3. Solve the colouring with **three different algorithms** and compare their performance as *n* grows.
-4. Plot the blank map and the coloured map for a chosen *n* and *k*.
+---
 
-| Assignment requirement | Where in the program |
+## 1. Requirements
+
+### 1.1 Project brief
+*n* cities are placed at random on a 2D map and connected with the maximum number of straight, non-crossing roads. Every city must then be lit so that no two cities joined by a road share a colour.
+
+| | Requirement | Where it is addressed |
+|---|---|---|
+| a | Generate and plot a 2D map from a user input *n* | Block 1 (`make_map`, `plot_map`) and Block 4 (`main`) |
+| b | Colour all cities with 3 colours (Red, Green, Blue) | Every method, k = 3 |
+| c | Colour all cities with 4 colours (Red, Green, Blue, Yellow) | Every method, k = 4 |
+| d | Use three distinct algorithms and compare their performance against *n* | M1, M2, M3 (Section 3) and the experiments (Section 5) |
+| e | Plot the coloured map for a given *n* and *k* | Block 1 (`plot_map`) and Block 4 (`demo_single_map`) |
+
+"Each city assigned a unique colour" in the brief is read as: each city receives **one** colour. It does not require all cities to have different colours.
+
+### 1.2 Method requirements
+- At least **three meaningfully different methods** are implemented and evaluated. Changing parameters alone does not count as a different method.
+- At least **one research article with a DOI** that describes a method for this or a similar problem is used.
+- The methods may include a method from an article, an established method, and a proposed method.
+- The methods are compared systematically, and their behaviour, strengths, limitations and observed differences are explained with **theoretical and mathematical reasoning**.
+- The aim is not only to identify the fastest method, but to explain what was done, why, what happened, and why it happened.
+
+---
+
+## 2. How the program works
+
+### 2.1 The map
+- **Cities:** *n* random points in [0, 1] × [0, 1]. A fixed seed makes every map reproducible.
+- **Roads:** Delaunay triangulation. Roads are straight and never cross, and no further road can be added without crossing an existing one, so the map is *maximally* connected.
+- **Road count:** |E| = 3n − 3 − h, where h is the number of cities on the outer boundary.
+- **Validation:** every map is checked by `validate_map()`:
+  - adjacency matches the roads
+  - no two roads cross
+  - no road passes through another city
+  - no city is left out of the triangulation
+  - the road count is exactly 3n − 3 − h
+- **Special cases:** n = 1 has no roads, n = 2 has one road, and cities on one straight line are connected as a path.
+
+### 2.2 The CSP
+| Component | Definition |
 |---|---|
-| (a) generate and plot map from user input *n* | Block 1 (map) + Block 4 (main) |
-| (b) colour with 3 colours | Blocks 1–3 (algorithms), k = 3 |
-| (c) colour with 4 colours | Blocks 1–3 (algorithms), k = 4 |
-| (d) three algorithms, compare vs *n* | A1, A2, A3 + Block 3 (experiments) |
-| (e) plot coloured map for given *n*, *k* | Block 1 (`plot_map`) + Block 4 |
-
-## 2. How it works
-
-### Map
-- Cities: random points in [0, 1] × [0, 1], with a seed so results can be reproduced.
-- Roads: **Delaunay triangulation**. It gives non-crossing straight roads, and no extra road can be added without crossing one, so the map is "maximally connected". Number of roads = 3n − 3 − h (h = cities on the outer boundary).
-- Every map is checked by `validate_map()` (no crossings, no missing cities, correct road count).
-
-### CSP formulation
-| | |
-|---|---|
-| Variables | the cities |
+| Variables | the cities 0 … n−1 |
 | Domain | {R, G, B} for k = 3, {R, G, B, Y} for k = 4 |
 | Constraint | for every road (i, j): colour(i) ≠ colour(j) |
 
-### Algorithms
-| | Algorithm | Type | Idea |
-|---|---|---|---|
-| A1 | Naive Backtracking | complete | try colours in fixed order, go back on conflict |
-| A2 | Backtracking + MRV + Degree + LCV + Forward Checking | complete + heuristics | pick the most constrained city first, try the least constraining colour, remove impossible colours from neighbours early |
-| A3 | Min-Conflicts | local search | start with random colours, repeatedly fix a conflicting city; fast but may fail even if a solution exists |
+### 2.3 Result statuses
+| Status | Meaning |
+|---|---|
+| `SAT` | a colouring was found and verified by `verify_solution()` |
+| `UNSAT` | a complete method **proved** that no colouring exists |
+| `TIMEOUT` | the time limit was reached. **This proves nothing** |
+| `FAILED` | Min-Conflicts used up its step budget. **This proves nothing** |
 
-### Things to keep in mind
-- **k = 4 always has a solution** (the map is planar → Four Colour Theorem).
-- **k = 3 often has no solution.** If an inner city has an odd number of neighbours, its neighbours form an odd ring, which needs 4 colours. This check proves "no solution", but passing it does not prove a solution exists.
-- Results use these statuses:
-  - `SAT`: solution found and verified
-  - `UNSAT`: complete search finished, no solution exists
-  - `TIMEOUT`: ran out of time; this proves nothing
-  - `FAILED`: Min-Conflicts gave up; this proves nothing
-- All algorithms count **constraint checks** (colour comparisons) in the same way, so they can be compared fairly next to runtime.
+---
 
-### Experiments
-- n = 5, 10, 20 (testing) → 30, 50, 75, 100 → 150, 200
-- Several random maps per n; **all algorithms use the same maps**.
-- Time limit for A1/A2, step limit for A3.
-- Output: `results.csv`, plus plots of runtime and constraint checks vs n (separate for k = 3 and k = 4).
+## 3. Methods
 
-## 3. Code structure
+| Name | Code name | Method | Type | Category |
+|---|---|---|---|---|
+| Baseline | `A1` | Naive backtracking | Complete, systematic search | Reference point |
+| **M1** | `A2` | Backtracking + MRV + Degree + LCV + Forward Checking | Complete, systematic search with heuristics | Established method |
+| **M2** | `A3` | Min-Conflicts | Incomplete, stochastic local search | Method from a research article |
+| **M3** | `M3` | Structure-Aware Solver | Complete, constructive, uses the structure of the map | Proposed method |
 
-Everything is in **one file**, `multi_city_lighting.py`, split into blocks. Each block has one owner.
+The three methods represent different approaches: **systematic search** (M1), **local search** (M2), and **exploitation of the mathematical structure of the map** (M3).
 
-| Block | Owner | Contents |
+### Baseline — Naive backtracking (A1)
+Cities are coloured in order 0, 1, 2, …, with colours tried in a fixed order and a step back on every conflict. No heuristics are used. The baseline shows how much the ideas in M1 and M3 contribute.
+
+### M1 — Backtracking with heuristics (A2)
+- **MRV:** the city with the fewest remaining colours is coloured first.
+- **Degree:** ties are broken by choosing the city with the most uncoloured neighbours.
+- **LCV:** the colour that removes the fewest options from neighbours is tried first.
+- **Forward Checking:** after each assignment the colour is removed from the neighbours, and the search steps back as soon as a neighbour has no colours left.
+
+Sources: Haralick & Elliott (1980) for forward checking, and Brélaz (1979) for the DSatur idea, which corresponds to MRV + Degree in graph colouring.
+
+### M2 — Min-Conflicts (A3)
+The method starts from a random full colouring. It then repeatedly selects a city in conflict and gives it the colour with the fewest conflicts. It is fast in practice, but it **cannot prove UNSAT** and may fail even when a solution exists.
+
+Source: Minton et al. (1992).
+
+### M3 — Structure-Aware Solver (proposed method)
+M3 uses the fact that every generated map is a **planar triangulation**. It applies a different technique for each k:
+
+| k | Technique | Result |
 |---|---|---|
-| 0. Shared | everyone | imports, colours, statuses, `MapColouringCSP`, `verify_solution`, `run_algorithm` |
-| 1. Map & plots | Person 1 | map generation, validation, parity check, **A1**, plots |
-| 2. Smart backtracking | Person 2 | **A2** (MRV, Degree, LCV, Forward Checking) |
-| 3. Local search & experiments | Person 3 | **A3**, experiment runner, results summary |
-| 4. Main | Person 1 | user input → map → colouring → plots |
+| 3 | **Triangle propagation:** one triangle is coloured R, G, B. In each neighbouring triangle the third city has only one colour left, so the colours spread through the whole map. | SAT with a colouring, or UNSAT with a proof. Linear in the number of triangles, no search |
+| 4 | **Smallest-last ordering + Kempe chains:** cities are coloured in smallest-last order. When all four colours are taken by neighbours, the two colours along a Kempe chain are swapped to free one. | SAT. If Kempe chains ever fail, the baseline (A1) runs as a complete fallback |
 
-Every algorithm has the same shape, so the blocks connect without extra work:
+Details:
+- M3 only reads the road graph, so it follows the same interface as the other methods.
+- If a map violates M3's assumptions, M3 raises an error instead of returning an unproven answer.
+- **Fallback indicator:** for k = 4, `assignment_attempts > 0` means the fallback was used. The Kempe colouring itself never changes this counter.
 
+Origin of each part of M3:
+
+| Part of M3 | Origin |
+|---|---|
+| Smallest-last ordering | Matula & Beck (1983) |
+| Kempe chain recolouring | Kempe (1879). Heawood (1890) showed that the argument can fail, so success is not guaranteed in theory |
+| 3-colourable triangulation ⇔ every inner vertex has even degree | Known result (Heawood) for full triangulations |
+| **New in this project** | Combining these techniques into a single solver; adapting the k = 3 theorem and its proof to maps whose outer face is not a triangle; the complete fallback; the experimental validation |
+
+---
+
+## 4. Theory
+
+### 4.1 k = 4
+The generated maps are planar, so a 4-colouring **always exists** (Four Colour Theorem). Every k = 4 instance is solvable. A method that does not find a colouring has timed out or failed.
+
+### 4.2 k = 3
+Most generated maps **cannot** be coloured with 3 colours. This is a mathematical property of maximally connected maps, not a limitation of the implementation.
+
+**Lemma (conflict ⇒ UNSAT).** If triangle propagation reaches a conflict, no 3-colouring exists.
+
+*Proof sketch.* In any 3-colouring every triangle uses all three colours, because its cities are pairwise connected. Renaming colours keeps a colouring valid, so any 3-colouring can be renamed to match the colours of the first triangle. From then on every colour assigned by propagation is forced, so propagation would reproduce that colouring exactly and never reach a conflict. ∎
+
+The lemma only requires that every triangle consists of three pairwise-connected cities, which holds for every map that passes validation.
+
+**Theorem.** A map that passes `validate_map()` is 3-colourable **if and only if** every inner city has an even number of neighbours.
+
+*Reasoning.* The neighbours of an inner city form a closed ring. With 3 colours the ring may only use 2 colours, which must alternate around it, and this is possible only if the ring has even length. Conversely, if every ring is even, propagation never reaches a conflict, because the map is a single region without holes.
+
+**Empirical check.** On 3,900 random maps (n = 3–15), the parity check (`check_3colour_parity`), complete search (A1) and M3 agreed in **every** case: 1,147 SAT and 2,753 UNSAT.
+
+**Consequence.** For k = 3 the program reports UNSAT **together with a proof**. Removing roads to make 3 colours sufficient is not considered, because the map would no longer be maximally connected.
+
+---
+
+## 5. Experiments
+
+- **Values of n:** 5, 10, 20 (functional tests), then 30, 50, 75, 100, then 150, 200. Larger values can be used for M3.
+- **Maps:** several random maps per n with fixed seeds. **All methods are run on the same maps.**
+- **Limits:** a time limit for the complete methods and a step limit for Min-Conflicts. Min-Conflicts is run several times per map with different seeds.
+- **Metrics:**
+  - runtime
+  - **constraint checks**, counted in the same way for every method through `csp.check()`
+  - status proportions
+  - Min-Conflicts success rate, measured on solvable instances only
+  - M3 fallback rate
+- **Methods compared:** `COMPARED_ALGORITHMS = ("A1", "A2", "A3", "M3")`, defined in Block 4.
+- **Outputs:** `results.csv`, `compare_time.png`, `compare_checks.png`, and coloured maps `map_n{n}_k{k}_{method}.png`.
+- **Timeout rule in plots:** timed-out runs are excluded from the mean. A hollow point means that some runs timed out, so the mean is a lower bound.
+
+Example (n = 20, k = 3): the baseline needed **22,911** constraint checks to prove UNSAT, while M3 needed **38**.
+
+---
+
+## 6. Code structure
+
+The whole program is in **one file**, `multi_city_lighting.py`, divided into blocks.
+
+| Block | Responsible | Contents |
+|---|---|---|
+| 0. Shared | All members | colours, statuses, `MapColouringCSP`, `verify_solution`, `run_algorithm` |
+| 1. Map, baseline, M3, plots | Person 1 | map generation and validation, parity check, A1, M3, `plot_map`, `plot_comparison` |
+| 2. M1 | Person 2 | MRV/Degree, LCV, Forward Checking, `backtracking_generic` |
+| 3. M2 and experiments | Person 3 | Min-Conflicts, `determine_instance_status`, `run_experiment`, `summarise_results` |
+| Registry | All members | `ALGORITHMS`: name → (function, is_complete) |
+| 4. Main | Person 1 | demonstration for one n, experiment calls |
+
+**Interface.** Every method has the same signature, so the blocks connect directly:
 ```python
-def algorithm(csp, guard, rng) -> dict | None   # {city: colour} or None
+def method(csp, guard, rng) -> dict | None     # {city: colour}, or None
 ```
+- A method is run with `run_algorithm("A2", adjacency, colours)`, which returns the status, runtime and counters, and verifies every SAT result.
+- For a complete method, `None` means UNSAT. For Min-Conflicts, `None` means FAILED.
 
-You run any algorithm with `run_algorithm("A2", adjacency, colours)`. It returns the status, runtime and counters.
+**Conventions**
+1. Each block is edited only by its responsible member. Imports are kept in Block 0.
+2. Colours are compared only through `csp.check()`, and `guard.check()` is called inside loops and recursion, so constraint checks and time limits are measured identically for all methods.
+3. Changes are tested with small n (5, 10, 20) before they are merged.
 
-## 4. Team tasks
+---
 
-### Person 1 — Map, A1, Visualisation
-**Aim:** produce correct maps and all pictures, and implement the simplest algorithm.
-- Map generation + validation (already done)
-- `check_3colour_parity()`: the odd-degree check for k = 3
-- **A1** Naive Backtracking
-- `plot_map()` (done) and `plot_comparison()` for the result graphs
-- `main()`: tie everything together
-- Report: map generation, theory for k = 3 / k = 4, A1
+## 7. Responsibilities
 
-### Person 2 — CSP and A2
-**Aim:** build the CSP base everyone uses, and the fastest complete algorithm.
-- Lead the team review of Block 0 (names, statuses, counters) before coding starts
-- **A2**: MRV + Degree tie-break, LCV, Forward Checking
-- (Optional) ablation variants: A2 with some techniques switched off
-- Report: CSP formulation, A2 explanation, A1 vs A2 comparison
+### Person 1 — Map, baseline, M3, visualisation
+- Code: map generation and validation, parity check, A1, M3, `plot_map`, `plot_comparison`, `main`.
+- Report:
+  - map generation
+  - theory for k = 3 and k = 4 (Section 4)
+  - A1 as the baseline
+  - M3: design, sources, the parts that are new, and results
 
-### Person 3 — A3 and Experiments
-**Aim:** implement local search and produce the comparison data for requirement (d).
-- **A3** Min-Conflicts (step limit, optional restarts)
-- `run_experiment()`: run all algorithms on the same maps, write `results.csv`
-- Decide each map's final status (solvable / no solution / unknown)
-- `summarise_results()`: tables per n and k
-- Report: A3 explanation, experiment setup, results and conclusions
+### Person 2 — M1
+- Code: `select_unassigned_variable` (MRV + Degree), `order_domain_values` (LCV), `forward_check`, `backtracking_generic`. Optional ablation variants (`BT+MRV`, `BT+FC`) show which technique contributes most.
+- Literature: Haralick & Elliott (1980), Brélaz (1979).
+- Report:
+  - CSP formulation
+  - M1
+  - baseline versus M1, and the ablation results
 
-## 5. Working together
-1. Agree on Block 0 first, then do not change it without asking everyone.
-2. Only edit your own block. New imports go in Block 0.
-3. Compare colours only through `csp.check()` and call `guard.check()` inside loops/recursion, so that counting and timeouts work the same for all algorithms.
-4. Test with small n (5, 10, 20) before pushing. Every SAT result must pass `verify_solution()`.
-5. Use your own Git branch, make small commits, and `git pull` often.
+### Person 3 — M2 and experiments
+- Code: `min_conflicts` (step limit, optional restarts), `determine_instance_status`, `run_experiment`, `summarise_results`. All methods in `COMPARED_ALGORITHMS` are run on the same maps.
+- Literature: Minton et al. (1992).
+- Report:
+  - M2, and why it cannot prove UNSAT
+  - experimental setup
+  - results and their analysis (Section 5)
 
-## 6. How to run
+All members should be able to explain every method and result.
+
+---
+
+## 8. References
+
+1. Minton, S., Johnston, M. D., Philips, A. B., & Laird, P. (1992). Minimizing conflicts: a heuristic repair method for constraint satisfaction and scheduling problems. *Artificial Intelligence*, 58(1–3), 161–205. https://doi.org/10.1016/0004-3702(92)90007-K
+2. Haralick, R. M., & Elliott, G. L. (1980). Increasing tree search efficiency for constraint satisfaction problems. *Artificial Intelligence*, 14(3), 263–313. https://doi.org/10.1016/0004-3702(80)90051-X
+3. Brélaz, D. (1979). New methods to color the vertices of a graph. *Communications of the ACM*, 22(4), 251–256.
+4. Matula, D. W., & Beck, L. L. (1983). Smallest-last ordering and clustering and graph coloring algorithms. *Journal of the ACM*, 30(3), 417–427.
+5. Kempe, A. B. (1879). On the geographical problem of the four colours. *American Journal of Mathematics*, 2(3), 193–200.
+6. Heawood, P. J. (1890). Map-colour theorem. *Quarterly Journal of Pure and Applied Mathematics*, 24, 332–338.
+7. Russell, S., & Norvig, P. *Artificial Intelligence: A Modern Approach*, chapter on Constraint Satisfaction Problems.
+
+---
+
+## 9. How to run
 
 ```bash
 pip install numpy scipy matplotlib
@@ -117,4 +232,6 @@ python multi_city_lighting.py
 # Enter the number of cities n: 20
 ```
 
-Unfinished functions show `NOT_IMPLEMENTED` instead of crashing, so the program can be run at any stage.
+- The program prints the result of every method for k = 3 and k = 4, and saves the maps as PNG files.
+- Methods that are not yet implemented show `NOT_IMPLEMENTED` instead of stopping the program.
+- Set `SHOW_PLOTS = True` in Block 0 to open plot windows instead of only saving PNG files.
