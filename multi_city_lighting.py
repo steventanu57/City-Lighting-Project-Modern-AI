@@ -704,42 +704,131 @@ def plot_comparison(rows, metric="runtime_seconds", save_path=None, show=SHOW_PL
 # Aim: the fastest complete algorithm. Compare colours only via csp.check().
 # =============================================================================
 def select_unassigned_variable(csp, assignment, domains, use_mrv=True):
-    """MRV: city with fewest colours left; tie -> most unassigned neighbours
-    (Degree); tie -> lowest index. use_mrv=False -> lowest index. (TODO)"""
-    raise NotImplementedError
+    """MRV: fewest colours left; tie -> most unassigned neighbours;
+    tie -> lowest index. use_mrv=False -> lowest index."""
+    unassigned = [v for v in csp.variables if v not in assignment]
 
+    if not use_mrv:
+        return unassigned[0]
+
+    return min(
+        unassigned,
+        key=lambda v: (
+            len(domains[v]),
+            -sum(1 for nb in csp.neighbours[v] if nb not in assignment),
+            v,
+        ),
+    )
 
 def order_domain_values(csp, var, assignment, domains, use_lcv=True):
-    """LCV: colours that remove the fewest options from neighbours first.
-    use_lcv=False -> domains[var] as is. (TODO)"""
-    raise NotImplementedError
+    """LCV: colours that remove the fewest options from neighbours first."""
+    if not use_lcv:
+        return list(domains[var])
 
+    def eliminated_options(value):
+        eliminated = 0
+
+        for nb in csp.neighbours[var]:
+            if nb in assignment:
+                continue
+
+            for neighbour_value in domains[nb]:
+                if not csp.check(value, neighbour_value):
+                    eliminated += 1
+
+        return eliminated
+
+    return sorted(domains[var], key=eliminated_options)
 
 def forward_check(csp, var, value, assignment, domains):
-    """Remove `value` from unassigned neighbours' domains (on a copy).
-    Return (new_domains, ok); ok=False if a domain becomes empty. (TODO)"""
-    raise NotImplementedError
+    """Remove incompatible colours from unassigned neighbours' domains."""
+    new_domains = {
+    v: list(domain) for v, domain in domains.items()
+    }
 
+    for nb in csp.neighbours[var]:
+        if nb in assignment:
+            continue
+
+        new_domains[nb] = [
+            neighbour_value
+            for neighbour_value in new_domains[nb]
+            if csp.check(value, neighbour_value)
+        ]
+
+        if not new_domains[nb]:
+            return new_domains, False
+
+    return new_domains, True
 
 def backtracking_generic(csp, guard, rng, use_mrv=True, use_lcv=True, use_fc=True):
-    """Backtracking with switchable MRV / LCV / FC. Same skeleton and counters
-    as A1. Return {city: colour} or None. (TODO)"""
-    raise NotImplementedError
+    """Backtracking with switchable MRV / LCV / FC."""
+    assignment = {}
+    domains = {
+    v: list(csp.domains[v]) for v in csp.variables
+    }
 
+    def backtrack(current_domains):
+        guard.check()
+
+        if len(assignment) == csp.n:
+            return dict(assignment)
+
+        var = select_unassigned_variable(
+            csp, assignment, current_domains, use_mrv
+        )
+
+        values = order_domain_values(
+            csp, var, assignment, current_domains, use_lcv
+        )
+
+        for value in values:
+            guard.check()
+            csp.metrics.assignment_attempts += 1
+
+            if csp.is_consistent(var, value, assignment):
+                assignment[var] = value
+
+                if use_fc:
+                    next_domains, ok = forward_check(
+                        csp, var, value, assignment, current_domains
+                    )
+                else:
+                    next_domains, ok = current_domains, True
+
+                if ok:
+                    result = backtrack(next_domains)
+
+                    if result is not None:
+                        return result
+
+                del assignment[var]
+                csp.metrics.backtracks += 1
+
+        return None
+
+    return backtrack(domains)
 
 def backtracking_fc(csp, guard, rng):
     """A2 = all techniques on."""
-    return backtracking_generic(csp, guard, rng, use_mrv=True, use_lcv=True, use_fc=True)
+    return backtracking_generic(
+    csp, guard, rng,
+    use_mrv=True, use_lcv=True, use_fc=True
+)
 
 
 # Optional ablation variants (work automatically once backtracking_generic works)
 def bt_mrv(csp, guard, rng):
-    return backtracking_generic(csp, guard, rng, use_mrv=True, use_lcv=False, use_fc=False)
-
+    return backtracking_generic(
+    csp, guard, rng,
+    use_mrv=True, use_lcv=False, use_fc=False
+    )
 
 def bt_fc(csp, guard, rng):
-    return backtracking_generic(csp, guard, rng, use_mrv=False, use_lcv=False, use_fc=True)
-
+    return backtracking_generic(
+    csp, guard, rng,
+    use_mrv=False, use_lcv=False, use_fc=True
+    )
 
 # =============================================================================
 # BLOCK 3 — PERSON 3: A3 (MIN-CONFLICTS) + EXPERIMENTS
