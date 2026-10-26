@@ -118,7 +118,23 @@ Origin of each part of M3:
 The generated maps are planar, so a 4-colouring **always exists** (Four Colour Theorem). Every k = 4 instance is solvable. A method that does not find a colouring has timed out or failed.
 
 ### 4.2 k = 3
-Most generated maps **cannot** be coloured with 3 colours. This is a mathematical property of maximally connected maps, not a limitation of the implementation.
+Most generated maps **cannot** be coloured with 3 colours. This is a mathematical property of maximally connected maps, not a limitation of the implementation: no algorithm can do better. This section proves it, shows how often it happens, and explains what it means for requirement (b).
+
+**Setting.** An *inner city* is a city that is not on the outer boundary of the map. Every map with at least 3 cities that passes `validate_map()` is a triangulation: the roads divide the area inside the boundary into triangles. Around an inner city these triangles fit together like slices of a pie, so its neighbours form a **closed ring**: going around the city, each neighbour is joined by a road to the next one, and the last neighbour is joined to the first. In graph terms, the city and its ring form a *wheel*. (Maps with fewer than 3 cities, or with all cities on one line, are simple paths. They have no inner cities, and 2 colours already suffice.)
+
+**Theorem 1 (odd ring ⇒ no 3-colouring).** If some inner city has an odd number of neighbours, the map cannot be coloured with 3 colours.
+
+*Proof.* Suppose the map has a 3-colouring, and let *v* be an inner city with *d* neighbours. Rename the colours so that *v* is Red. Every neighbour is joined to *v* by a road, so every neighbour is Green or Blue. Neighbours that are next to each other on the ring are also joined by a road, so they have different colours: going around the ring, the colour switches between Green and Blue at every step. The ring is closed, so after *d* steps we are back at the first neighbour, which still has its original colour. Each step flips the colour, so this is only possible if *d* is even. Hence in a 3-colourable map every inner city has an even number of neighbours, and a map with an odd one has no 3-colouring. ∎
+
+*Example.* An inner city with 5 neighbours is Red. Going around its ring, the first four neighbours must be Green, Blue, Green, Blue. The 5th neighbour is joined to the city (Red), to the 4th neighbour (Blue) and to the 1st neighbour (Green), so no colour is left for it.
+
+Theorem 1 does not depend on any algorithm, and applying it only requires counting neighbours. `check_3colour_parity()` does exactly this.
+
+**Theorem 2 (converse).** If every inner city has an even number of neighbours, the map can be coloured with 3 colours.
+
+*Proof sketch.* Colour one triangle R, G, B and spread the colours through neighbouring triangles, as M3 does: in each new triangle the third city has only one colour left. A conflict could only arise if two different chains of triangles forced different colours on the same city. Walking once around an inner city through its triangles, the city keeps its colour and its ring alternates between the other two colours, so the walk ends consistently exactly when the number of neighbours is even (the argument of Theorem 1). The triangles fill one region without holes, so every closed chain of triangles can be split into walks around single inner cities. If each of these walks is consistent, every chain gives the same colours, and propagation never reaches a conflict. ∎
+
+Theorem 2 is not needed to trust the program's answers: every SAT colouring is checked by `verify_solution()`, and every UNSAT answer is backed by Theorem 1 or by the lemma below.
 
 **Lemma (conflict ⇒ UNSAT).** If triangle propagation reaches a conflict, no 3-colouring exists.
 
@@ -126,13 +142,25 @@ Most generated maps **cannot** be coloured with 3 colours. This is a mathematica
 
 The lemma only requires that every triangle consists of three pairwise-connected cities, which holds for every map that passes validation.
 
-**Theorem.** A map that passes `validate_map()` is 3-colourable **if and only if** every inner city has an even number of neighbours.
+**Why almost every larger map is impossible.** A map can be 3-coloured only if **every** inner city has an even number of neighbours, and a single inner city with an odd number is enough to rule it out (Theorem 1). In the generated maps about half of the inner cities have an odd number of neighbours, and the number of inner cities grows with *n*. Measured on 200 maps per *n* (seeds 0–199):
 
-*Reasoning.* The neighbours of an inner city form a closed ring. With 3 colours the ring may only use 2 colours, which must alternate around it, and this is possible only if the ring has even length. Conversely, if every ring is even, propagation never reaches a conflict, because the map is a single region without holes.
+| *n* | Inner cities (average) | Inner cities with an odd number of neighbours (average) | 3-colourable maps |
+|---|---|---|---|
+| 5 | 0.8 | 0.3 | 146 / 200 (73%) |
+| 10 | 3.9 | 1.9 | 20 / 200 (10%) |
+| 15 | 7.9 | 3.9 | 0 / 200 |
+| 20 | 12.2 | 6.2 | 0 / 200 |
+| 30 | 21.2 | 10.8 | 0 / 200 |
+| 50 | 39.9 | 20.3 | 0 / 200 |
+| 100 | 88.0 | 43.8 | 0 / 200 |
 
-**Empirical check.** On 3,900 random maps (n = 3–15), the parity check (`check_3colour_parity`), complete search (A1) and M3 agreed in **every** case: 1,147 SAT and 2,753 UNSAT.
+From *n* = 15 on, a typical map has about 4 or more inner cities with an odd number of neighbours, and each of them rules out a 3-colouring on its own. A result of 0 / 200 does not mean that 3-colourable maps cannot exist for these *n*, only that they are very rare.
 
-**Consequence.** For k = 3 the program reports UNSAT **together with a proof**. Removing roads to make 3 colours sufficient is not considered, because the map would no longer be maximally connected.
+**Empirical check.** The theory and the program agree on every map tested:
+- On 3,900 random maps (n = 3–15), the parity check (`check_3colour_parity`), complete search (A1) and M3 agreed in **every** case: 1,147 SAT and 2,753 UNSAT.
+- On the 1,400 maps in the table above, the parity check and M3 agreed in **every** case, and A1 also agreed on all 800 maps with n ≤ 20.
+
+**Consequence for requirement (b).** The program colours the map with 3 colours whenever this is possible, which in practice means mostly small *n*. Otherwise it reports UNSAT, and every UNSAT answer is backed by a proof: an inner city with an odd number of neighbours (Theorem 1), or a propagation conflict (Lemma). Removing roads to make 3 colours sufficient is not considered, because the map would no longer be maximally connected. Together with Section 4.1, this shows that 4 is the smallest number of colours that works for every generated map.
 
 ---
 
