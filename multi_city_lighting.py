@@ -746,16 +746,56 @@ def bt_fc(csp, guard, rng):
 # Aim: local search, and the comparison data for requirement (d).
 # =============================================================================
 def min_conflicts(csp, guard, rng, max_steps=DEFAULT_MAX_STEPS, max_restarts=0):
-    """A3. Random full colouring, then repeatedly recolour a random conflicting
-    city with its least-conflict colour. (TODO)
+    """A3: repair a random complete colouring.
 
-    TODO:
-      - use rng for all randomness, guard.check() every step
-      - csp.count_conflicts(...) to measure conflicts
-      - count csp.metrics.repair_iterations and csp.metrics.restarts
-      - return {city: colour}, or None when the step budget is used up
+    max_steps is the repair budget per attempt. max_restarts counts extra
+    attempts after the first. All attempts share the same time limit.
+    Return a valid colouring, or None when all attempts are exhausted.
     """
-    raise NotImplementedError
+    for name, value in (("max_steps", max_steps), ("max_restarts", max_restarts)):
+        if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+            raise ValueError(f"{name} must be a non-negative integer")
+
+    for attempt in range(max_restarts + 1):
+        guard.check()
+        if attempt > 0:
+            csp.metrics.restarts += 1
+
+        # Start with one random colour for every city.
+        assignment = {}
+        for city in csp.variables:
+            guard.check()
+            assignment[city] = rng.choice(csp.colours)
+
+        # The extra check also verifies the final allowed repair.
+        for step in range(max_steps + 1):
+            guard.check()
+            conflicted = []
+            for city in csp.variables:
+                guard.check()
+                if csp.count_conflicts(city, assignment[city], assignment) > 0:
+                    conflicted.append(city)
+
+            if not conflicted:
+                return assignment
+            if step == max_steps:
+                break
+
+            # Pick a conflicting city, then score each available colour.
+            city = rng.choice(conflicted)
+            scores = []
+            for colour in csp.colours:
+                guard.check()
+                scores.append(csp.count_conflicts(city, colour, assignment))
+
+            minimum = min(scores)
+            best_colours = [colour for colour, score in zip(csp.colours, scores)
+                            if score == minimum]
+            assignment[city] = rng.choice(best_colours)
+            csp.metrics.repair_iterations += 1
+
+    # Local-search failure is NOT a proof of impossibility.
+    return None
 
 
 def determine_instance_status(k, parity_label, runs):
