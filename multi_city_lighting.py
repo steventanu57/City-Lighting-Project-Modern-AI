@@ -1,14 +1,20 @@
 """
 Multi-City Lighting — Graph Colouring as a CSP
-See projectoverview.md for the overview and team tasks.
+See projectoverview.md for the overview and responsibilities.
 
     BLOCK 0  Shared                       (everyone — agree first, then freeze)
-    BLOCK 1  Map, A1, plots               (Person 1)
+    BLOCK 1  Map, A1, M3, plots           (Person 1)
     BLOCK 2  A2 smart backtracking        (Person 2)
     BLOCK 3  A3 min-conflicts, experiments(Person 3)
     BLOCK 4  Main                         (Person 1)
 
 Only edit your own block.
+
+Methods (code name -> report name):
+    A1  naive backtracking                 -> Baseline
+    A2  backtracking + MRV/Degree/LCV/FC   -> M1 (established method)
+    A3  min-conflicts local search         -> M2 (method from the literature)
+    M3  structure-aware solver             -> M3 (proposed method)
 """
 
 # =============================================================================
@@ -158,14 +164,15 @@ def run_algorithm(name, adjacency, colours, map_seed=None, run_seed=None,
 
 
 # =============================================================================
-# BLOCK 1 — PERSON 1: MAP, A1, PLOTS
-# Aim: correct maps, all pictures, and the simplest algorithm.
+# BLOCK 1 — PERSON 1: MAP, A1, M3, PLOTS
+# Aim: correct maps, all pictures, the baseline (A1) and the proposed method (M3).
 #
 #   1.1 Map generation      generate_cities, generate_roads, build_adjacency, make_map
 #   1.2 Map validation      validate_map (+ helpers)
 #   1.3 Parity check        check_3colour_parity          (k = 3 analysis)
-#   1.4 Algorithm A1        backtracking_search           (naive backtracking)
-#   1.5 Plots               plot_map, plot_comparison
+#   1.4 Algorithm A1        backtracking_search           (naive backtracking, baseline)
+#   1.5 Algorithm M3        structure_aware_solver        (proposed method)
+#   1.6 Plots               plot_map, plot_comparison
 # =============================================================================
 
 # ---- 1.1 Map generation ------------------------------------------------------
@@ -297,6 +304,20 @@ def find_crossing_roads(cities, roads):
     return [(road_list[x], road_list[y]) for x, y in zip(i[bad], j[bad])]
 
 
+def find_roads_through_cities(cities, roads):
+    """Return every (road, city) where a road passes straight through another
+    city (should be empty). Such a road would really be two roads."""
+    problems = []
+    all_cities = np.arange(len(cities))
+    for a, b in roads:
+        others = all_cities[(all_cities != a) & (all_cities != b)]
+        p, q, r = cities[a], cities[b], cities[others]
+        on_line = _orientation(p[None, :], q[None, :], r) == 0
+        between = np.all((r >= np.minimum(p, q) - EPS) & (r <= np.maximum(p, q) + EPS), axis=1)
+        problems += [((a, b), int(c)) for c in others[on_line & between]]
+    return problems
+
+
 def validate_map(cities, roads, adjacency, tri=None):
     """Check that the map is a valid, maximal, non-crossing road network.
     Raises MapValidationError with a clear message on the first problem."""
@@ -317,6 +338,8 @@ def validate_map(cities, roads, adjacency, tri=None):
     # roads do not cross
     crossings = find_crossing_roads(cities, roads)
     need(not crossings, f"crossing roads found, e.g. {crossings[:3]}")
+    through = find_roads_through_cities(cities, roads)
+    need(not through, f"roads passing through a city, e.g. {through[:3]}")
 
     # roads are maximal
     if tri is None:                          # n < 3 or collinear: a simple path
@@ -330,14 +353,19 @@ def validate_map(cities, roads, adjacency, tri=None):
 
 # ---- 1.3 Parity check for k = 3 ---------------------------------------------
 def check_3colour_parity(adjacency, tri):
-    """Quick proof that a map cannot be coloured with 3 colours.
+    """O(n) test of whether a map can be coloured with 3 colours.
 
     In a triangulation the neighbours of an inner city form a closed ring.
     An odd ring already needs 3 colours, so together with the centre city it
     needs 4. Outer (boundary) cities have no closed ring and are skipped.
 
     Returns UNSAT if some inner city has an odd number of neighbours,
-    otherwise NEEDS_CHECK ("not proven UNSAT" - NOT proof that a solution exists).
+    otherwise NEEDS_CHECK.
+
+    For maps that pass validate_map() the test works in both directions:
+    NEEDS_CHECK maps are always 3-colourable (see M3's triangle propagation
+    and projectoverview.md). The label NEEDS_CHECK is kept because Block 3
+    uses it; experiments still confirm it with complete search.
     """
     if tri is None:                          # n < 3 or collinear: a path, 2 colours suffice
         return NEEDS_CHECK
@@ -379,7 +407,188 @@ def backtracking_search(csp, guard, rng):
     return backtrack()
 
 
-# ---- 1.5 Plots ----------------------------------------------------------------
+# ---- 1.5 Algorithm M3: Structure-Aware Solver --------------------------------
+def structure_aware_solver(csp, guard, rng):
+    """M3. Uses the structure of the map (a planar triangulation) instead of
+    generic search.
+
+      k = 3 : triangle propagation      -> SAT colouring, or None = proven UNSAT
+      k = 4 : smallest-last + Kempe chains, with A1 as a complete fallback
+
+    Fallback indicator: Kempe colouring never touches assignment_attempts,
+    so for k = 4 `metrics.assignment_attempts > 0` means A1 was used.
+    """
+    k = len(csp.colours)
+    if k == 3:
+        return _m3_triangle_propagation(csp, guard)
+    if k == 4:
+        return _m3_kempe_colouring(csp, guard, rng)
+    raise ValueError(f"M3 supports k = 3 or k = 4, got k = {k}")
+
+
+def _find_triangles(adjacency):
+    """All triples of cities that are pairwise connected by roads.
+    Returns (triangles, edge_to_triangles)."""
+    triangles = []
+    edge_to_triangles = {}
+    for u in range(len(adjacency)):
+        for v in adjacency[u]:
+            if v <= u:
+                continue
+            for w in adjacency[u] & adjacency[v]:
+                if w <= v:
+                    continue
+                t = len(triangles)
+                triangles.append((u, v, w))
+                for edge in ((u, v), (v, w), (u, w)):
+                    edge_to_triangles.setdefault(edge, []).append(t)
+    return triangles, edge_to_triangles
+
+
+def _m3_two_colouring(csp, guard):
+    """Graph without triangles (n < 3 or collinear cities: a path).
+    Colour it with two alternating colours by breadth-first search."""
+    first, second = csp.colours[0], csp.colours[1]
+    colour = {}
+    for start in csp.variables:
+        if start in colour:
+            continue
+        colour[start] = first
+        queue = [start]
+        for city in queue:
+            guard.check()
+            other = second if colour[city] == first else first
+            for nb in csp.neighbours[city]:
+                if nb not in colour:
+                    colour[nb] = other
+                    queue.append(nb)
+                elif not csp.check(colour[nb], colour[city]):
+                    raise RuntimeError("M3: map without triangles is not 2-colourable; "
+                                       "this map does not satisfy M3's assumptions")
+    return colour
+
+
+def _m3_triangle_propagation(csp, guard):
+    """k = 3. Colour one triangle R, G, B, then spread through triangles that
+    share an edge: the third city of each triangle has only one colour left.
+
+    A conflict proves that no 3-colouring exists (any 3-colouring would be
+    reproduced exactly, up to renaming colours), so None means UNSAT.
+
+    Why visited triangles can be skipped: a city's colour is set once and never
+    changed, and when a triangle is visited all three of its roads are checked
+    (x != y, and w gets the third colour). A later visit through another shared
+    edge would only re-check the same, unchanged colours.
+    """
+    triangles, edge_to_triangles = _find_triangles(csp.neighbours)
+    if not triangles:
+        return _m3_two_colouring(csp, guard)
+
+    colour = dict(zip(triangles[0], csp.colours))
+    visited = {0}
+    queue = [0]
+    for t in queue:
+        a, b, c = triangles[t]
+        for x, y in ((a, b), (b, c), (a, c)):
+            for t2 in edge_to_triangles[(x, y)]:
+                if t2 in visited:
+                    continue
+                guard.check()
+                visited.add(t2)
+                queue.append(t2)
+
+                # conflict type 1: the two shared cities already have the same colour
+                if not csp.check(colour[x], colour[y]):
+                    return None
+                w = next(city for city in triangles[t2] if city not in (x, y))
+                forced = next(col for col in csp.colours
+                              if csp.check(col, colour[x]) and csp.check(col, colour[y]))
+                if w not in colour:
+                    colour[w] = forced
+                elif csp.check(colour[w], forced):
+                    # conflict type 2: the third city already has another colour
+                    return None
+
+    if len(colour) < csp.n:
+        raise RuntimeError("M3: some cities were not reached by triangle propagation; "
+                           "this map does not satisfy M3's assumptions")
+    return colour
+
+
+def _smallest_last_order(csp, guard):
+    """Repeatedly remove the city with the fewest remaining neighbours; colour
+    in the reverse order. In a planar map a removed city always has <= 5
+    remaining neighbours, so each city sees at most 5 coloured neighbours."""
+    degree = {v: len(csp.neighbours[v]) for v in csp.variables}
+    removed = []
+    remaining = set(csp.variables)
+    while remaining:
+        guard.check()
+        v = min(remaining, key=lambda city: (degree[city], city))
+        remaining.remove(v)
+        removed.append(v)
+        for nb in csp.neighbours[v]:
+            if nb in remaining:
+                degree[nb] -= 1
+    return removed[::-1]
+
+
+def _kempe_chain(csp, guard, start, colour, a, b):
+    """All coloured cities reachable from `start` using only colours a and b."""
+    chain = {start}
+    stack = [start]
+    while stack:
+        guard.check()
+        city = stack.pop()
+        for nb in csp.neighbours[city]:
+            if nb in colour and nb not in chain and (
+                    not csp.check(colour[nb], a) or not csp.check(colour[nb], b)):
+                chain.add(nb)
+                stack.append(nb)
+    return chain
+
+
+def _swap(colour, chain, a, b):
+    for city in chain:
+        colour[city] = b if colour[city] == a else a
+
+
+def _free_colour_with_kempe(csp, guard, v, colour):
+    """Try to free a colour for v by swapping one Kempe chain. Returns the freed
+    colour, or None if no single swap works (possible in theory: Heawood, 1890)."""
+    for a in csp.colours:
+        for b in csp.colours:
+            if a == b:
+                continue
+            for start in [nb for nb in csp.neighbours[v]
+                          if nb in colour and not csp.check(colour[nb], a)]:
+                chain = _kempe_chain(csp, guard, start, colour, a, b)
+                _swap(colour, chain, a, b)
+                if csp.is_consistent(v, a, colour):
+                    return a
+                _swap(colour, chain, a, b)          # undo, try the next chain
+    return None
+
+
+def _m3_kempe_colouring(csp, guard, rng):
+    """k = 4. Smallest-last order + Kempe chain recolouring; A1 as fallback."""
+    colour = {}
+    for v in _smallest_last_order(csp, guard):
+        guard.check()
+        free = next((c for c in csp.colours if csp.is_consistent(v, c, colour)), None)
+        if free is None:
+            free = _free_colour_with_kempe(csp, guard, v, colour)
+        if free is None:
+            result = backtracking_search(csp, guard, rng)     # complete fallback
+            if result is None:
+                raise RuntimeError("M3: A1 found no 4-colouring, which is impossible "
+                                   "for a planar map; check the input map")
+            return result
+        colour[v] = free
+    return colour
+
+
+# ---- 1.6 Plots ----------------------------------------------------------------
 METRIC_LABELS = {"runtime_seconds": "Runtime (s)",
                  "constraint_checks": "Constraint checks"}
 
@@ -597,12 +806,17 @@ ALGORITHMS = {
     "A3": (min_conflicts, False),
     "BT+MRV": (bt_mrv, True),
     "BT+FC": (bt_fc, True),
+    "M3": (structure_aware_solver, True),
 }
 
 
 # =============================================================================
 # BLOCK 4 — MAIN (Person 1)
 # =============================================================================
+COMPARED_ALGORITHMS = ("A1", "A2", "A3", "M3")      # baseline + the three methods
+REPORT_NAMES = {"A1": "Baseline", "A2": "M1", "A3": "M2", "M3": "M3"}
+
+
 def demo_single_map(n, seed=42):
     """Requirements (a), (b), (c), (e) for one n."""
     m = make_map(n, seed)
@@ -612,14 +826,15 @@ def demo_single_map(n, seed=42):
 
     for k in (3, 4):
         print(f"\nk = {k}")
-        for name in ("A1", "A2", "A3"):
+        for name in COMPARED_ALGORITHMS:
+            label = f"{name} ({REPORT_NAMES[name]})"
             res = run_algorithm(name, m["adjacency"], COLOURS_BY_K[k],
                                 map_seed=seed, run_seed=0)
-            print(f"  {name}: {res.status:16s} {res.runtime_seconds:.4f}s "
+            print(f"  {label:15s} {res.status:16s} {res.runtime_seconds:.4f}s "
                   f"checks={res.metrics.constraint_checks}")
             if res.status != NOT_IMPLEMENTED:
                 plot_map(m["cities"], m["roads"], res.colouring,
-                         title=f"n={n}, k={k}, {name}: {res.status}",
+                         title=f"n={n}, k={k}, {label}: {res.status}",
                          save_path=f"map_n{n}_k{k}_{name}.png")
 
 
@@ -628,7 +843,8 @@ def main():
     demo_single_map(n)
 
     # Requirement (d), once Block 3 is done:
-    # rows = run_experiment([5, 10, 20, 30, 50, 75, 100])
+    # rows = run_experiment([5, 10, 20, 30, 50, 75, 100],
+    #                       algorithms=COMPARED_ALGORITHMS)
     # summarise_results(rows)
     # plot_comparison(rows, "runtime_seconds", "compare_time.png")
     # plot_comparison(rows, "constraint_checks", "compare_checks.png")
