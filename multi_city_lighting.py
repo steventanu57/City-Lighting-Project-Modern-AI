@@ -746,12 +746,6 @@ def bt_fc(csp, guard, rng):
 # Aim: local search, and the comparison data for requirement (d).
 # =============================================================================
 def min_conflicts(csp, guard, rng, max_steps=DEFAULT_MAX_STEPS, max_restarts=0):
-    """A3: repair a random complete colouring.
-
-    max_steps is the repair budget per attempt. max_restarts counts extra
-    attempts after the first. All attempts share the same time limit.
-    Return a valid colouring, or None when all attempts are exhausted.
-    """
     for name, value in (("max_steps", max_steps), ("max_restarts", max_restarts)):
         if isinstance(value, bool) or not isinstance(value, int) or value < 0:
             raise ValueError(f"{name} must be a non-negative integer")
@@ -799,13 +793,34 @@ def min_conflicts(csp, guard, rng, max_steps=DEFAULT_MAX_STEPS, max_restarts=0):
 
 
 def determine_instance_status(k, parity_label, runs):
-    """Final status of one (map, k): SOLVABLE / UNSAT / UNRESOLVED. (TODO)
+    if k not in (3, 4):
+        raise ValueError("k must be 3 or 4")
+    if parity_label not in (NEEDS_CHECK, UNSAT):
+        raise ValueError("Invalid parity result")
 
-    Rules: k=4 -> SOLVABLE; parity UNSAT -> UNSAT; a complete run SAT/UNSAT ->
-    that; only A3 SAT -> SOLVABLE (note it); otherwise UNRESOLVED.
-    TIMEOUT and FAILED prove nothing.
-    """
-    raise NotImplementedError
+    solvable = k == 4
+    impossible = k == 3 and parity_label == UNSAT
+
+    for run in runs:
+        if run.k != k or run.algorithm not in ALGORITHMS:
+            raise ValueError("Run does not match the experiment")
+        if run.status not in (SAT, UNSAT, FAILED, TIMEOUT, NOT_IMPLEMENTED):
+            raise ValueError("Invalid run status")
+
+        if run.status == SAT:
+            solvable = True
+        elif run.status == UNSAT:
+            if not ALGORITHMS[run.algorithm][1]:
+                raise ValueError("This algorithm cannot prove UNSAT")
+            impossible = True
+
+    if solvable and impossible:
+        raise ValueError("Results contradict each other")
+    if solvable:
+        return SOLVABLE
+    if impossible:
+        return UNSAT
+    return UNRESOLVED
 
 
 def run_experiment(n_values, k_values=(3, 4), trials=10,
