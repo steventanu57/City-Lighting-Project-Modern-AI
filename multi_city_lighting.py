@@ -826,14 +826,50 @@ def determine_instance_status(k, parity_label, runs):
 def run_experiment(n_values, k_values=(3, 4), trials=10,
                    algorithms=("A1", "A2", "A3"), timeout_seconds=DEFAULT_TIMEOUT,
                    max_steps=DEFAULT_MAX_STEPS, a3_runs=5, csv_path="results.csv"):
-    """Run all algorithms on the SAME maps and save results.csv. (TODO)
+    """Run all algorithms on the SAME maps and save results.csv.
 
-    TODO:
-      - for each n and trial: make_map(n, seed) once, fixed seed per (n, trial)
-      - for each k and algorithm: run_algorithm(...) (A3 several times)
-      - add parity + instance status to each row, save_results_csv(rows, csv_path)
+    For every n, `trials` maps are made with the fixed seed 1000 * n + trial,
+    so every algorithm sees exactly the same maps and a rerun gives the same
+    maps. Complete algorithms run once per (map, k). Local search (A3) is
+    random, so it runs `a3_runs` times with run seeds 0, 1, 2, ...
+
+    Each row is RunResult.to_row() plus two columns:
+      parity          : check_3colour_parity() for k = 3, "N/A" for k = 4
+      instance_status : determine_instance_status() for that (map, k)
+    Returns the rows and writes them to csv_path.
     """
-    raise NotImplementedError
+    if trials >= 1000:
+        raise ValueError("trials must be below 1000 (map seed = 1000 * n + trial)")
+
+    rows = []
+    for n in n_values:
+        start = time.perf_counter()
+        for trial in range(trials):
+            map_seed = 1000 * n + trial
+            m = make_map(n, map_seed)
+            parity = check_3colour_parity(m["adjacency"], m["triangulation"])
+
+            for k in k_values:
+                runs = []
+                for name in algorithms:
+                    is_complete = ALGORITHMS[name][1]
+                    run_seeds = [0] if is_complete else range(a3_runs)
+                    params = {} if is_complete else {"max_steps": max_steps}
+                    for run_seed in run_seeds:
+                        runs.append(run_algorithm(name, m["adjacency"], COLOURS_BY_K[k],
+                                                  map_seed=map_seed, run_seed=run_seed,
+                                                  timeout_seconds=timeout_seconds, **params))
+
+                status = determine_instance_status(k, parity, runs)
+                for run in runs:
+                    row = run.to_row()
+                    row["parity"] = parity if k == 3 else "N/A"
+                    row["instance_status"] = status
+                    rows.append(row)
+        print(f"run_experiment: n={n} done ({trials} maps, {time.perf_counter() - start:.1f}s)")
+
+    save_results_csv(rows, csv_path)
+    return rows
 
 
 def save_results_csv(rows, csv_path="results.csv"):
@@ -847,8 +883,107 @@ def save_results_csv(rows, csv_path="results.csv"):
 
 def summarise_results(rows):
     """Table per (n, k): #SOLVABLE/#UNSAT/#UNRESOLVED, % finished for A1/A2,
-    A3 success rate (on SOLVABLE maps only), mean/std runtime and checks. (TODO)"""
-    raise NotImplementedError
+    A3 success rate (on SOLVABLE maps only), mean/std runtime and checks.
+    Also the status counts and the M3 fallback rate (projectoverview.md, Section 5).
+
+    rows: from run_experiment(), or read back from results.csv (all strings).
+    Same TIMEOUT rule as plot_comparison: TIMEOUT and NOT_IMPLEMENTED runs are
+    left out of the mean and std, and a mean with timeouts is marked as a lower bound.
+    Prints three tables (instances, outcomes, cost) and returns
+    {"instances": [...], "algorithms": [...]}.
+    """
+    if not rows:
+        print("summarise_results: no rows to summarise, skipped.")
+        return {"instances": [], "algorithms": []}
+
+    groups = sorted({(int(r["n"]), int(r["k"])) for r in rows})
+    algorithms = list(dict.fromkeys(r["algorithm"] for r in rows))   # first-seen order
+
+    # Instances: one per (map, k); every row of a map carries its status
+    instances = []
+    for n, k in groups:
+        status_of_map = {r["map_seed"]: r["instance_status"] for r in rows
+                         if int(r["n"]) == n and int(r["k"]) == k}
+        counts = Counter(status_of_map.values())
+        instances.append({"n": n, "k": k, "maps": len(status_of_map),
+                          SOLVABLE: counts[SOLVABLE], UNSAT: counts[UNSAT],
+                          UNRESOLVED: counts[UNRESOLVED]})
+
+    # Algorithms: one line per (n, k, algorithm)
+    summary = []
+    for n, k in groups:
+        for alg in algorithms:
+            runs = [r for r in rows if int(r["n"]) == n and int(r["k"]) == k
+                    and r["algorithm"] == alg]
+            if not runs:
+                continue
+            implemented = [r for r in runs if r["status"] != NOT_IMPLEMENTED]
+            finished = [r for r in implemented if r["status"] != TIMEOUT]
+            statuses = Counter(r["status"] for r in implemented)
+            line = {"n": n, "k": k, "algorithm": alg, "runs": len(runs),
+                    "implemented": bool(implemented),
+                    SAT: statuses[SAT], UNSAT: statuses[UNSAT],
+                    FAILED: statuses[FAILED], TIMEOUT: statuses[TIMEOUT],
+                    "finished_pct": None, "success_pct": None, "fallback_pct": None,
+                    "runtime_mean": None, "runtime_std": None,
+                    "checks_mean": None, "checks_std": None}
+
+            is_complete = ALGORITHMS[alg][1]
+            if implemented and is_complete:              # complete: SAT or UNSAT = finished
+                line["finished_pct"] = 100 * len(finished) / len(implemented)
+            on_solvable = [r for r in implemented if r["instance_status"] == SOLVABLE]
+            if on_solvable and not is_complete:          # local search: SOLVABLE maps only
+                line["success_pct"] = 100 * sum(r["status"] == SAT
+                                                for r in on_solvable) / len(on_solvable)
+            if implemented and alg == "M3" and k == 4:   # fallback indicator (Section 3)
+                line["fallback_pct"] = 100 * sum(int(r["assignment_attempts"]) > 0
+                                                 for r in implemented) / len(implemented)
+            if finished:
+                runtimes = [float(r["runtime_seconds"]) for r in finished]
+                checks = [float(r["constraint_checks"]) for r in finished]
+                line.update(runtime_mean=np.mean(runtimes), runtime_std=np.std(runtimes),
+                            checks_mean=np.mean(checks), checks_std=np.std(checks))
+            summary.append(line)
+
+    def pct(value):
+        return "-" if value is None else f"{value:.0f}%"
+
+    def head(row):
+        return f"{row['n']:>5} {row['k']:>2}  {row['algorithm']:<9} {row['runs']:>5}"
+
+    print("\nInstances (one per map and k)")
+    print(f"{'n':>5} {'k':>2} {'maps':>5} {SOLVABLE:>9} {UNSAT:>6} {UNRESOLVED:>11}")
+    for row in instances:
+        print(f"{row['n']:>5} {row['k']:>2} {row['maps']:>5} {row[SOLVABLE]:>9} "
+              f"{row[UNSAT]:>6} {row[UNRESOLVED]:>11}")
+
+    print("\nOutcomes per algorithm")
+    print("  finished = complete methods: % of runs that ended in SAT or UNSAT")
+    print("  success  = local search: % of runs that found a colouring, on SOLVABLE maps only")
+    print("  fallback = M3 with k = 4: % of runs that needed the A1 fallback")
+    print(f"{'n':>5} {'k':>2}  {'algorithm':<9} {'runs':>5} {SAT:>5} {UNSAT:>6} {FAILED:>7} "
+          f"{TIMEOUT:>8} {'finished':>9} {'success':>8} {'fallback':>9}")
+    for row in summary:
+        if not row["implemented"]:
+            print(f"{head(row)}  not implemented")
+            continue
+        print(f"{head(row)} {row[SAT]:>5} {row[UNSAT]:>6} {row[FAILED]:>7} {row[TIMEOUT]:>8} "
+              f"{pct(row['finished_pct']):>9} {pct(row['success_pct']):>8} "
+              f"{pct(row['fallback_pct']):>9}")
+
+    print("\nCost per algorithm (mean +/- std over runs that did not time out;")
+    print("  * = some runs timed out, so the mean is a lower bound)")
+    print(f"{'n':>5} {'k':>2}  {'algorithm':<9} {'runs':>5} {'runtime (s)':>22} "
+          f"{'constraint checks':>28}")
+    for row in summary:
+        if row["runtime_mean"] is None:
+            print(f"{head(row)}  {'all runs timed out' if row['implemented'] else 'not implemented'}")
+            continue
+        print(f"{head(row)} {row['runtime_mean']:>11.4f} +/- {row['runtime_std']:<8.4f}"
+              f"{row['checks_mean']:>15,.0f} +/- {row['checks_std']:<10,.0f}"
+              f"{'*' if row[TIMEOUT] else ''}")
+
+    return {"instances": instances, "algorithms": summary}
 
 
 # =============================================================================
