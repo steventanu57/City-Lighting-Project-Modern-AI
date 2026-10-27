@@ -6,4 +6,4 @@ venv/
 
 # Program output
 *.png
-results.csv
+results*.csv
