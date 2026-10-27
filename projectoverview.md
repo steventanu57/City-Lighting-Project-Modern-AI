@@ -263,3 +263,35 @@ python multi_city_lighting.py
 - The program prints the result of every method for k = 3 and k = 4, and saves the maps as PNG files.
 - Methods that are not yet implemented show `NOT_IMPLEMENTED` instead of stopping the program.
 - Set `SHOW_PLOTS = True` in Block 0 to open plot windows instead of only saving PNG files.
+
+### Running the experiments (requirement d)
+
+`main()` only runs the demonstration for one *n*. The experiments take much longer, so they are started with a separate command from the project folder.
+
+Quick test (about 10 seconds):
+
+```bash
+python -c "import multi_city_lighting as m; rows = m.run_experiment([5, 10, 20], trials=3, algorithms=m.COMPARED_ALGORITHMS); m.summarise_results(rows)"
+```
+
+Full experiment for the report (about 30 minutes, measured before A2 was merged; most of the time is A1 reaching the time limit at large *n*):
+
+```bash
+python -c "import multi_city_lighting as m; rows = m.run_experiment([5, 10, 20, 30, 50, 75, 100], algorithms=m.COMPARED_ALGORITHMS); m.summarise_results(rows); m.plot_comparison(rows, 'runtime_seconds', 'compare_time.png'); m.plot_comparison(rows, 'constraint_checks', 'compare_checks.png')"
+```
+
+Larger *n* (Section 5) with the fast methods only, saved to a separate file so that `results.csv` is not overwritten (about 15 minutes):
+
+```bash
+python -c "import multi_city_lighting as m; rows = m.run_experiment([150, 200], algorithms=('A3', 'M3'), csv_path='results_large.csv'); m.summarise_results(rows)"
+```
+
+Print the tables again from a saved file:
+
+```bash
+python -c "import csv, multi_city_lighting as m; m.summarise_results(list(csv.DictReader(open('results.csv'))))"
+```
+
+- The full experiment saves `results.csv`, `compare_time.png` and `compare_checks.png`, and prints the summary tables.
+- The quick test also writes `results.csv`, so run it before the full experiment, not after.
+- `results.csv` is rewritten after every map, so a run that stops early keeps the maps that were finished.
