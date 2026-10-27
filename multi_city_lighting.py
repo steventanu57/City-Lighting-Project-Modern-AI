@@ -836,7 +836,8 @@ def run_experiment(n_values, k_values=(3, 4), trials=10,
     Each row is RunResult.to_row() plus two columns:
       parity          : check_3colour_parity() for k = 3, "N/A" for k = 4
       instance_status : determine_instance_status() for that (map, k)
-    Returns the rows and writes them to csv_path.
+    Returns the rows. csv_path is rewritten after every map, so a run that
+    stops early (crash or Ctrl+C) keeps the finished maps.
     """
     if trials >= 1000:
         raise ValueError("trials must be below 1000 (map seed = 1000 * n + trial)")
@@ -866,9 +867,9 @@ def run_experiment(n_values, k_values=(3, 4), trials=10,
                     row["parity"] = parity if k == 3 else "N/A"
                     row["instance_status"] = status
                     rows.append(row)
+            save_results_csv(rows, csv_path)       # after every map, see docstring
         print(f"run_experiment: n={n} done ({trials} maps, {time.perf_counter() - start:.1f}s)")
 
-    save_results_csv(rows, csv_path)
     return rows
 
 
