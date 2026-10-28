@@ -779,6 +779,16 @@ def bt_fc(csp, guard, rng):
 # Aim: local search, and the comparison data for requirement (d).
 # =============================================================================
 def min_conflicts(csp, guard, rng, max_steps=DEFAULT_MAX_STEPS, max_restarts=0):
+    """Repair a random complete colouring using Min-Conflicts.
+
+    max_steps is the repair limit per attempt. max_restarts counts extra
+    attempts, so the total repair limit is (max_restarts + 1) * max_steps.
+    All attempts share the same guard and random-number generator.
+
+    Only the changed city and its neighbours need their conflict status
+    updated. Candidates are sorted before rng.choice to preserve city order.
+    Returns a colouring, or None when all attempts fail (not proof of UNSAT).
+    """
     for name, value in (("max_steps", max_steps), ("max_restarts", max_restarts)):
         if isinstance(value, bool) or not isinstance(value, int) or value < 0:
             raise ValueError(f"{name} must be a non-negative integer")
@@ -788,28 +798,27 @@ def min_conflicts(csp, guard, rng, max_steps=DEFAULT_MAX_STEPS, max_restarts=0):
         if attempt > 0:
             csp.metrics.restarts += 1
 
-        # Start with one random colour for every city.
         assignment = {}
         for city in csp.variables:
             guard.check()
             assignment[city] = rng.choice(csp.colours)
 
-        # The extra check also verifies the final allowed repair.
+        # Find all conflicting cities once at the start of this attempt.
+        conflicted = set()
+        for city in csp.variables:
+            guard.check()
+            if csp.count_conflicts(city, assignment[city], assignment) > 0:
+                conflicted.add(city)
+
+        # Also check the colouring after the last allowed repair.
         for step in range(max_steps + 1):
             guard.check()
-            conflicted = []
-            for city in csp.variables:
-                guard.check()
-                if csp.count_conflicts(city, assignment[city], assignment) > 0:
-                    conflicted.append(city)
-
             if not conflicted:
                 return assignment
             if step == max_steps:
                 break
 
-            # Pick a conflicting city, then score each available colour.
-            city = rng.choice(conflicted)
+            city = rng.choice(sorted(conflicted))
             scores = []
             for colour in csp.colours:
                 guard.check()
@@ -821,11 +830,35 @@ def min_conflicts(csp, guard, rng, max_steps=DEFAULT_MAX_STEPS, max_restarts=0):
             assignment[city] = rng.choice(best_colours)
             csp.metrics.repair_iterations += 1
 
-    # Local-search failure is NOT a proof of impossibility.
+            # Other cities cannot be affected by this colour change.
+            affected = csp.neighbours[city] | {city}
+            for other in sorted(affected):
+                guard.check()
+                if csp.count_conflicts(other, assignment[other], assignment) > 0:
+                    conflicted.add(other)
+                else:
+                    conflicted.discard(other)
+
     return None
 
 
 def determine_instance_status(k, parity_label, runs):
+    """Classify one validated map and palette using all available evidence.
+
+    Preconditions: the graph passed map validation, SAT results were verified,
+    and every run refers to this same map and k. Missing map seeds cannot
+    establish map identity, so the caller must still supply matching runs.
+
+    SOLVABLE: a verified SAT result, or k=4 by the Four Colour Theorem.
+    UNSAT: k=3 with an odd-degree interior vertex, or a complete method
+           returned UNSAT after exhausting its search.
+    UNRESOLVED: neither a solution nor an impossibility proof is available.
+    FAILED, TIMEOUT and NOT_IMPLEMENTED provide neither kind of evidence.
+    A passing parity check retains NEEDS_CHECK until a solver confirms SAT.
+
+    Raises ValueError for invalid labels, incompatible runs, an UNSAT result
+    from local search, or contradictory solvable/impossible evidence.
+    """
     if k not in (3, 4):
         raise ValueError("k must be 3 or 4")
     if parity_label not in (NEEDS_CHECK, UNSAT):
@@ -833,6 +866,8 @@ def determine_instance_status(k, parity_label, runs):
 
     solvable = k == 4
     impossible = k == 3 and parity_label == UNSAT
+    if len({(run.n, run.map_seed) for run in runs}) > 1:
+        raise ValueError("Runs must belong to the same map")
 
     for run in runs:
         if run.k != k or run.algorithm not in ALGORITHMS:
@@ -857,8 +892,9 @@ def determine_instance_status(k, parity_label, runs):
 
 
 def run_experiment(n_values, k_values=(3, 4), trials=10,
-                   algorithms=("A1", "A2", "A3"), timeout_seconds=DEFAULT_TIMEOUT,
-                   max_steps=DEFAULT_MAX_STEPS, a3_runs=5, csv_path="results.csv"):
+                   algorithms=("A1", "A2", "A3", "M3"), timeout_seconds=DEFAULT_TIMEOUT,
+                   max_steps=DEFAULT_MAX_STEPS, a3_runs=5, csv_path="results.csv",
+                   max_restarts=0):
     """Run all algorithms on the SAME maps and save results.csv.
 
     For every n, `trials` maps are made with the fixed seed 1000 * n + trial,
@@ -866,12 +902,34 @@ def run_experiment(n_values, k_values=(3, 4), trials=10,
     maps. Complete algorithms run once per (map, k). Local search (A3) is
     random, so it runs `a3_runs` times with run seeds 0, 1, 2, ...
 
+    A3 gets max_steps repairs per attempt and max_restarts extra attempts.
+    Use max_steps=1000, max_restarts=9 for at most 10,000 repairs per run.
+    One timeout covers all attempts; a3_runs counts independent whole runs.
+    The default remains one attempt for compatibility with earlier results.
+
     Each row is RunResult.to_row() plus two columns:
       parity          : check_3colour_parity() for k = 3, "N/A" for k = 4
       instance_status : determine_instance_status() for that (map, k)
     Returns the rows. csv_path is rewritten after every map, so a run that
     stops early (crash or Ctrl+C) keeps the finished maps.
     """
+    for name, value in (("trials", trials), ("a3_runs", a3_runs)):
+        if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+            raise ValueError(f"{name} must be a positive integer")
+    for name, value in (("max_steps", max_steps), ("max_restarts", max_restarts)):
+        if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+            raise ValueError(f"{name} must be a non-negative integer")
+    if timeout_seconds is not None and (not np.isfinite(timeout_seconds) or timeout_seconds < 0):
+        raise ValueError("timeout_seconds must be finite and non-negative, or None")
+    n_values, k_values, algorithms = list(n_values), tuple(k_values), tuple(algorithms)
+    if not n_values or any(isinstance(n, bool) or not isinstance(n, (int, np.integer)) or n < 1 for n in n_values):
+        raise ValueError("n_values must contain positive integers")
+    if not k_values or any(k not in COLOURS_BY_K for k in k_values):
+        raise ValueError("k_values must contain 3 or 4")
+    if not algorithms or any(name not in ALGORITHMS for name in algorithms):
+        raise ValueError("Unknown or empty algorithm list")
+    if len(set(n_values)) != len(n_values) or len(set(k_values)) != len(k_values) or len(set(algorithms)) != len(algorithms):
+        raise ValueError("Experiment lists must not contain duplicates")
     if trials >= 1000:
         raise ValueError("trials must be below 1000 (map seed = 1000 * n + trial)")
 
@@ -888,7 +946,8 @@ def run_experiment(n_values, k_values=(3, 4), trials=10,
                 for name in algorithms:
                     is_complete = ALGORITHMS[name][1]
                     run_seeds = [0] if is_complete else range(a3_runs)
-                    params = {} if is_complete else {"max_steps": max_steps}
+                    params = {} if is_complete else {"max_steps": max_steps,
+                                                      "max_restarts": max_restarts}
                     for run_seed in run_seeds:
                         runs.append(run_algorithm(name, m["adjacency"], COLOURS_BY_K[k],
                                                   map_seed=map_seed, run_seed=run_seed,
