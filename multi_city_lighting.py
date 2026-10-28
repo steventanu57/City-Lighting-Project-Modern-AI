@@ -980,8 +980,9 @@ def summarise_results(rows):
     Also the status counts and the M3 fallback rate (projectoverview.md, Section 5).
 
     rows: from run_experiment(), or read back from results.csv (all strings).
-    Same TIMEOUT rule as plot_comparison: TIMEOUT and NOT_IMPLEMENTED runs are
-    left out of the mean and std, and a mean with timeouts is marked as a lower bound.
+    Same rule as plot_comparison: TIMEOUT and FAILED runs prove nothing, so only
+    runs that ended in SAT or UNSAT count in the mean and std, and a mean that
+    leaves runs out is marked with *. NOT_IMPLEMENTED runs are ignored.
     Prints three tables (instances, outcomes, cost) and returns
     {"instances": [...], "algorithms": [...]}.
     """
@@ -1011,7 +1012,7 @@ def summarise_results(rows):
             if not runs:
                 continue
             implemented = [r for r in runs if r["status"] != NOT_IMPLEMENTED]
-            finished = [r for r in implemented if r["status"] != TIMEOUT]
+            answered = [r for r in implemented if r["status"] not in UNANSWERED]
             statuses = Counter(r["status"] for r in implemented)
             line = {"n": n, "k": k, "algorithm": alg, "runs": len(runs),
                     "implemented": bool(implemented),
@@ -1023,7 +1024,7 @@ def summarise_results(rows):
 
             is_complete = ALGORITHMS[alg][1]
             if implemented and is_complete:              # complete: SAT or UNSAT = finished
-                line["finished_pct"] = 100 * len(finished) / len(implemented)
+                line["finished_pct"] = 100 * len(answered) / len(implemented)
             on_solvable = [r for r in implemented if r["instance_status"] == SOLVABLE]
             if on_solvable and not is_complete:          # local search: SOLVABLE maps only
                 line["success_pct"] = 100 * sum(r["status"] == SAT
@@ -1031,9 +1032,9 @@ def summarise_results(rows):
             if implemented and alg == "M3" and k == 4:   # fallback indicator (Section 3)
                 line["fallback_pct"] = 100 * sum(int(r["assignment_attempts"]) > 0
                                                  for r in implemented) / len(implemented)
-            if finished:
-                runtimes = [float(r["runtime_seconds"]) for r in finished]
-                checks = [float(r["constraint_checks"]) for r in finished]
+            if answered:
+                runtimes = [float(r["runtime_seconds"]) for r in answered]
+                checks = [float(r["constraint_checks"]) for r in answered]
                 line.update(runtime_mean=np.mean(runtimes), runtime_std=np.std(runtimes),
                             checks_mean=np.mean(checks), checks_std=np.std(checks))
             summary.append(line)
@@ -1064,17 +1065,17 @@ def summarise_results(rows):
               f"{pct(row['finished_pct']):>9} {pct(row['success_pct']):>8} "
               f"{pct(row['fallback_pct']):>9}")
 
-    print("\nCost per algorithm (mean +/- std over runs that did not time out;")
-    print("  * = some runs timed out, so the mean is a lower bound)")
+    print("\nCost per algorithm (mean +/- std over runs that ended in SAT or UNSAT;")
+    print("  * = some runs timed out or failed and are left out, so the real cost is higher)")
     print(f"{'n':>5} {'k':>2}  {'algorithm':<9} {'runs':>5} {'runtime (s)':>22} "
           f"{'constraint checks':>28}")
     for row in summary:
         if row["runtime_mean"] is None:
-            print(f"{head(row)}  {'all runs timed out' if row['implemented'] else 'not implemented'}")
+            print(f"{head(row)}  {'every run timed out or failed' if row['implemented'] else 'not implemented'}")
             continue
         print(f"{head(row)} {row['runtime_mean']:>11.4f} +/- {row['runtime_std']:<8.4f}"
               f"{row['checks_mean']:>15,.0f} +/- {row['checks_std']:<10,.0f}"
-              f"{'*' if row[TIMEOUT] else ''}")
+              f"{'*' if row[TIMEOUT] or row[FAILED] else ''}")
 
     return {"instances": instances, "algorithms": summary}
 
