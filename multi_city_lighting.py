@@ -145,22 +145,26 @@ def run_algorithm(name, adjacency, colours, map_seed=None, run_seed=None,
     """
     func, is_complete = ALGORITHMS[name]
     csp = MapColouringCSP(adjacency, colours)
+    status = None
     start = time.perf_counter()
     try:
         colouring = func(csp, TimeGuard(timeout_seconds), random.Random(run_seed), **params)
+    except SearchTimeout:
+        colouring, status = None, TIMEOUT
+    except NotImplementedError:
+        colouring, status = None, NOT_IMPLEMENTED
+    runtime = time.perf_counter() - start      # timer stops BEFORE verification
+
+    if status is None:
         if colouring is None:
             status = UNSAT if is_complete else FAILED
         elif verify_solution(adjacency, colouring, colours):
             status = SAT
         else:
             raise AssertionError(f"{name} returned an invalid colouring (bug)")
-    except SearchTimeout:
-        colouring, status = None, TIMEOUT
-    except NotImplementedError:
-        colouring, status = None, NOT_IMPLEMENTED
     return RunResult(name, len(adjacency), len(colours), status,
                      colouring if status == SAT else None,
-                     time.perf_counter() - start, map_seed, run_seed, csp.metrics)
+                     runtime, map_seed, run_seed, csp.metrics)
 
 
 # =============================================================================
@@ -367,14 +371,18 @@ def check_3colour_parity(adjacency, tri):
     and projectoverview.md). The label NEEDS_CHECK is kept because Block 3
     uses it; experiments still confirm it with complete search.
     """
-    if tri is None:                          # n < 3 or collinear: a path, 2 colours suffice
-        return NEEDS_CHECK
+    return UNSAT if odd_inner_cities(adjacency, tri) else NEEDS_CHECK
 
+
+def odd_inner_cities(adjacency, tri):
+    """Inner cities with an odd number of neighbours. Each one alone proves
+    that the map cannot be coloured with 3 colours. Used by the parity check
+    and to highlight the proof on k = 3 pictures."""
+    if tri is None:                          # n < 3 or collinear: a path, no inner cities
+        return []
     outer = {city for edge in boundary_edges(tri) for city in edge}
-    for city, neighbours in enumerate(adjacency):
-        if city not in outer and len(neighbours) % 2 == 1:
-            return UNSAT
-    return NEEDS_CHECK
+    return [city for city, neighbours in enumerate(adjacency)
+            if city not in outer and len(neighbours) % 2 == 1]
 
 
 # ---- 1.4 Algorithm A1: Naive Backtracking -----------------------------------
@@ -604,13 +612,24 @@ def _finish_figure(fig, save_path, show):
 
 
 def plot_map(cities, roads, colouring=None, title="City Map",
-             save_path=None, show=SHOW_PLOTS):
+             save_path=None, show=SHOW_PLOTS, highlight=None):
     """Draw the map. colouring=None gives a blank map (black cities);
-    otherwise colouring = {city: colour name}. Only pass SAT colourings."""
+    otherwise colouring = {city: colour name}. Only pass SAT colourings.
+
+    highlight: optional list of cities to mark with a red ring (used to show
+    the inner cities with an odd number of neighbours on k = 3 UNSAT maps).
+    """
     fig, ax = plt.subplots(figsize=(8, 7))
 
     for a, b in roads:
         ax.plot(*zip(cities[a], cities[b]), color="gray", linewidth=1, zorder=1)
+
+    if highlight:
+        marked = list(highlight)
+        ax.scatter(cities[marked, 0], cities[marked, 1], s=260, facecolors="none",
+                   edgecolors="red", linewidths=2, zorder=3,
+                   label="inner city with an odd number of neighbours")
+        ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.1), frameon=False)
 
     if colouring is None:
         point_colours = ["black"] * len(cities)
@@ -628,20 +647,23 @@ def plot_map(cities, roads, colouring=None, title="City Map",
     _finish_figure(fig, save_path, show)
 
 
+UNANSWERED = (TIMEOUT, FAILED)      # statuses that prove nothing
+
+
 def _points_for_algorithm(runs, metric):
     """Mean, error bars and hollow flags per n for one algorithm and one k.
-    Returns (points, timeouts) where points = list of (n, mean, low, high, hollow)."""
-    points, timeouts = [], 0
+    Returns (points, unanswered) where points = list of (n, mean, low, high, hollow)."""
+    points, unanswered = [], 0
     for n in sorted({int(r["n"]) for r in runs}):
         at_n = [r for r in runs if int(r["n"]) == n]
-        finished = [float(r[metric]) for r in at_n if r["status"] != TIMEOUT]
-        timeouts += len(at_n) - len(finished)
+        finished = [float(r[metric]) for r in at_n if r["status"] not in UNANSWERED]
+        unanswered += len(at_n) - len(finished)
         if not finished or np.mean(finished) <= 0:     # nothing to show on a log axis
             continue
         mean, std = np.mean(finished), np.std(finished)
         low = min(std, mean - min(finished))           # keep error bar above 0 on log axis
         points.append((n, mean, low, std, len(finished) < len(at_n)))
-    return points, timeouts
+    return points, unanswered
 
 
 def plot_comparison(rows, metric="runtime_seconds", save_path=None, show=SHOW_PLOTS):
@@ -650,12 +672,15 @@ def plot_comparison(rows, metric="runtime_seconds", save_path=None, show=SHOW_PL
     rows   : list of dicts from RunResult.to_row() (or read back from results.csv)
     metric : "runtime_seconds" or "constraint_checks"
 
-    TIMEOUT rule (Person 3 uses the same rule in summarise_results):
-      - TIMEOUT and NOT_IMPLEMENTED runs are left out of the mean and std.
-      - If some runs at an n timed out, the point is HOLLOW: the mean only
-        covers the runs that finished, so the real cost is higher.
-      - If every run at an n timed out, no point is drawn for that n.
-      - The legend shows how many runs of each algorithm timed out.
+    Unanswered rule (Person 3 uses the same rule in summarise_results):
+      - TIMEOUT and FAILED runs prove nothing, so they are left out of the
+        mean and std (NOT_IMPLEMENTED runs are ignored completely).
+        SAT and UNSAT runs are real answers and are included.
+      - If some runs at an n were unanswered, the point is HOLLOW: the mean
+        only covers the answered runs, so the real cost is higher.
+      - If every run at an n was unanswered, no point is drawn for that n.
+      - The legend shows how many runs of each algorithm were unanswered,
+        also for an algorithm that answered nothing at all.
     Error bars show the std; the lower end is clipped at the smallest
     observed value so it stays visible on the log axis.
     """
@@ -672,16 +697,23 @@ def plot_comparison(rows, metric="runtime_seconds", save_path=None, show=SHOW_PL
     fig, axes = plt.subplots(1, len(k_values), figsize=(6 * len(k_values), 5),
                              squeeze=False)
     for ax, k in zip(axes[0], k_values):
-        for alg in algorithms:
+        for i, alg in enumerate(algorithms):
+            colour = f"C{i}"                       # same colour for an algorithm in every panel
             runs = [r for r in rows if r["algorithm"] == alg and int(r["k"]) == k
                     and r["status"] != NOT_IMPLEMENTED]
-            points, timeouts = _points_for_algorithm(runs, metric)
-            if not points:
+            if not runs:
+                continue
+            points, unanswered = _points_for_algorithm(runs, metric)
+            name = f"{alg} ({REPORT_NAMES[alg]})" if alg in REPORT_NAMES else alg
+            if unanswered:
+                name += f", {unanswered}/{len(runs)} unanswered"
+            if not points:                         # nothing answered: legend entry only
+                ax.plot([], [], marker="o", linestyle="none", color=colour,
+                        markerfacecolor="white", label=name)
                 continue
 
             ns, means, lows, highs, hollow = zip(*points)
-            name = alg if timeouts == 0 else f"{alg} ({timeouts} timeouts)"
-            line = ax.errorbar(ns, means, yerr=[lows, highs], marker="o",
+            line = ax.errorbar(ns, means, yerr=[lows, highs], marker="o", color=colour,
                                capsize=3, label=name)[0]
             ax.plot([x for x, h in zip(ns, hollow) if h],
                     [y for y, h in zip(means, hollow) if h],
@@ -695,7 +727,8 @@ def plot_comparison(rows, metric="runtime_seconds", save_path=None, show=SHOW_PL
         if ax.get_legend_handles_labels()[0]:     # only if something was drawn
             ax.legend()
 
-    fig.suptitle(f"{label} vs n (hollow = some runs timed out, mean is a lower bound)")
+    fig.suptitle(f"{label} vs n (hollow = some runs timed out or failed; "
+                 "mean covers answered runs only)")
     _finish_figure(fig, save_path, show)
 
 
@@ -910,8 +943,13 @@ def demo_single_map(n, seed=42):
     """Requirements (a), (b), (c), (e) for one n."""
     m = make_map(n, seed)
     print(f"Cities: {n} | Roads: {len(m['roads'])}")
-    plot_map(m["cities"], m["roads"], title=f"Blank map (n={n})",
-             save_path=f"map_n{n}.png")
+    saved = [f"map_n{n}.png"]
+    plot_map(m["cities"], m["roads"], title=f"Blank map (n={n})", save_path=saved[0])
+
+    odd = odd_inner_cities(m["adjacency"], m["triangulation"])
+    if odd:
+        print(f"\n3 colours are impossible for this map: inner cities {odd} "
+              "have an odd number of neighbours (ringed in red on the k = 3 maps).")
 
     for k in (3, 4):
         print(f"\nk = {k}")
@@ -921,14 +959,37 @@ def demo_single_map(n, seed=42):
                                 map_seed=seed, run_seed=0)
             print(f"  {label:15s} {res.status:16s} {res.runtime_seconds:.4f}s "
                   f"checks={res.metrics.constraint_checks}")
-            if res.status != NOT_IMPLEMENTED:
-                plot_map(m["cities"], m["roads"], res.colouring,
-                         title=f"n={n}, k={k}, {label}: {res.status}",
-                         save_path=f"map_n{n}_k{k}_{name}.png")
+            if res.status == NOT_IMPLEMENTED:
+                continue
+            show_proof = k == 3 and res.status != SAT and odd
+            path = f"map_n{n}_k{k}_{name}.png"
+            plot_map(m["cities"], m["roads"], res.colouring,
+                     title=f"n={n}, k={k}, {label}: {res.status}",
+                     save_path=path, highlight=odd if show_proof else None)
+            saved.append(path)
+
+    print("\nSaved in the folder the program was run from:")
+    for path in saved:
+        print(f"  {path}")
+
+
+def ask_number_of_cities():
+    """Ask until the user types a whole number of at least 1."""
+    while True:
+        text = input("Enter the number of cities n: ").strip()
+        try:
+            n = int(text)
+        except ValueError:
+            print(f"  '{text}' is not a whole number. Please try again.")
+            continue
+        if n < 1:
+            print("  n must be at least 1. Please try again.")
+            continue
+        return n
 
 
 def main():
-    n = int(input("Enter the number of cities n: "))
+    n = ask_number_of_cities()
     demo_single_map(n)
 
     # Requirement (d), once Block 3 is done:
