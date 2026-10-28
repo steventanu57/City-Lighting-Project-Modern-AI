@@ -76,7 +76,7 @@ The three methods represent different approaches: **systematic search** (M1), **
 Cities are coloured in order 0, 1, 2, …, with colours tried in a fixed order and a step back on every conflict. No heuristics are used. The baseline shows how much the ideas in M1 and M3 contribute.
 
 ### M1 — Backtracking with heuristics (A2)
-- **MRV:** the city with the fewest remaining colours is coloured first.
+- **MRV:** the city with the fewest remaining legal colours is coloured first. When forward checking is disabled in the `BT+MRV` ablation, legal colours are counted against already-coloured neighbours rather than from unpruned domains.
 - **Degree:** ties are broken by choosing the city with the most uncoloured neighbours.
 - **LCV:** the colour that removes the fewest options from neighbours is tried first.
 - **Forward Checking:** after each assignment the colour is removed from the neighbours, and the search steps back as soon as a neighbour has no colours left.
@@ -205,7 +205,7 @@ def method(csp, guard, rng) -> dict | None     # {city: colour}, or None
 
 **Conventions**
 1. Each block is edited only by its responsible member. Imports are kept in Block 0.
-2. Colours are compared only through `csp.check()`, and `guard.check()` is called inside loops and recursion, so constraint checks and time limits are measured identically for all methods.
+2. Colour constraints are checked through `csp.check()`, and `guard.check()` is called inside loops and recursion. A2 retains the consistency check before forward checking; these checks count toward `constraint_checks` even when forward checking has already removed conflicting values.
 3. Changes are tested with small n (5, 10, 20) before they are merged.
 
 ---
@@ -227,6 +227,7 @@ def method(csp, guard, rng) -> dict | None     # {city: colour}, or None
   - CSP formulation
   - M1
   - baseline versus M1, and the ablation results
+  - note that A2's consistency checks remain counted even when forward checking is enabled
 
 ### Person 3 — M2 and experiments
 - Code: `min_conflicts` (step limit, optional restarts), `determine_instance_status`, `run_experiment`, `summarise_results`. All methods in `COMPARED_ALGORITHMS` are run on the same maps.
@@ -290,6 +291,12 @@ Min-Conflicts without restarts (one attempt of 10,000 steps) on the same maps, t
 
 ```bash
 python -c "import multi_city_lighting as m; rows = m.run_experiment([50, 75, 100, 150, 200], k_values=(4,), algorithms=('A3',), max_steps=10000, max_restarts=0, csv_path='results_a3_norestart.csv'); m.summarise_results(rows)"
+```
+
+Ablation for M1 (Section 7, Person 2): A1, A2 and two variants that each keep only one technique (`BT+MRV`: MRV and Degree; `BT+FC`: forward checking), to show which technique contributes most. Every *n* from 5 through 50 is tested and saved to a separate file (about 40 minutes):
+
+```bash
+python -c "import multi_city_lighting as m; rows = m.run_experiment(list(range(5, 51)), algorithms=('A1', 'A2', 'BT+MRV', 'BT+FC'), csv_path='results_ablation.csv'); m.summarise_results(rows)"
 ```
 
 Print the tables again from a saved file:
