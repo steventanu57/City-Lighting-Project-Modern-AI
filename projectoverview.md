@@ -168,7 +168,7 @@ From *n* = 15 on, a typical map has about 4 or more inner cities with an odd num
 
 - **Values of n:** 5, 10, 20 (functional tests), then 30, 50, 75, 100, then 150, 200. Larger values can be used for M3.
 - **Maps:** several random maps per n with fixed seeds. **All methods are run on the same maps.**
-- **Limits:** a time limit for the complete methods and a step limit for Min-Conflicts. Min-Conflicts is run several times per map with different seeds.
+- **Limits:** a time limit for the complete methods and a step limit for Min-Conflicts. Min-Conflicts gets 10 attempts of 1,000 repair steps (`max_steps=1000, max_restarts=9`): the same 10,000 steps in total as one long attempt, but every attempt starts from a new random colouring, so a run that gets stuck can start over. The run without restarts (Section 9) measures the difference. Min-Conflicts is run several times per map with different seeds.
 - **Metrics:**
   - runtime
   - **constraint checks**, counted in the same way for every method through `csp.check()`
@@ -177,7 +177,7 @@ From *n* = 15 on, a typical map has about 4 or more inner cities with an odd num
   - M3 fallback rate
 - **Methods compared:** `COMPARED_ALGORITHMS = ("A1", "A2", "A3", "M3")`, defined in Block 4.
 - **Outputs:** `results.csv`, `compare_time.png`, `compare_checks.png`, and coloured maps `map_n{n}_k{k}_{method}.png`.
-- **Timeout rule in plots:** timed-out runs are excluded from the mean. A hollow point means that some runs timed out, so the mean is a lower bound.
+- **Timed-out and failed runs in plots and tables:** TIMEOUT and FAILED runs prove nothing (Section 2.3), so they are left out of the mean. A hollow point in the plots, or a `*` in the `summarise_results` table, means that some runs timed out or failed and are left out: the mean covers only the runs that ended in SAT or UNSAT, so the real cost is higher. If every run at an *n* timed out or failed, the plot draws no point and the table says "every run timed out or failed". The plot legend counts these runs as unanswered ("x/y unanswered").
 
 Example (n = 20, k = 3): the baseline needed **22,911** constraint checks to prove UNSAT, while M3 needed **38**.
 
@@ -277,13 +277,19 @@ python -c "import multi_city_lighting as m; rows = m.run_experiment([5, 10, 20],
 Full experiment for the report (about 30 minutes, measured before A2 was merged; most of the time is A1 reaching the time limit at large *n*):
 
 ```bash
-python -c "import multi_city_lighting as m; rows = m.run_experiment([5, 10, 20, 30, 50, 75, 100], algorithms=m.COMPARED_ALGORITHMS); m.summarise_results(rows); m.plot_comparison(rows, 'runtime_seconds', 'compare_time.png'); m.plot_comparison(rows, 'constraint_checks', 'compare_checks.png')"
+python -c "import multi_city_lighting as m; rows = m.run_experiment([5, 10, 20, 30, 50, 75, 100], algorithms=m.COMPARED_ALGORITHMS, max_steps=1000, max_restarts=9); m.summarise_results(rows); m.plot_comparison(rows, 'runtime_seconds', 'compare_time.png'); m.plot_comparison(rows, 'constraint_checks', 'compare_checks.png')"
 ```
 
-Larger *n* (Section 5) with the fast methods only, saved to a separate file so that `results.csv` is not overwritten (about 15 minutes):
+Larger *n* (Section 5) with the fast methods only, saved to a separate file so that `results.csv` is not overwritten (about 1 minute):
 
 ```bash
-python -c "import multi_city_lighting as m; rows = m.run_experiment([150, 200], algorithms=('A3', 'M3'), csv_path='results_large.csv'); m.summarise_results(rows)"
+python -c "import multi_city_lighting as m; rows = m.run_experiment([150, 200], algorithms=('A3', 'M3'), max_steps=1000, max_restarts=9, csv_path='results_large.csv'); m.summarise_results(rows)"
+```
+
+Min-Conflicts without restarts (one attempt of 10,000 steps) on the same maps, to measure what restarts add (Section 5). Only k = 4 is run, because almost no map with n ≥ 15 is 3-colourable (Section 4.2) (about 1 minute):
+
+```bash
+python -c "import multi_city_lighting as m; rows = m.run_experiment([50, 75, 100, 150, 200], k_values=(4,), algorithms=('A3',), max_steps=10000, max_restarts=0, csv_path='results_a3_norestart.csv'); m.summarise_results(rows)"
 ```
 
 Print the tables again from a saved file:
