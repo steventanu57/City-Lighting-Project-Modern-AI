@@ -269,13 +269,13 @@ python multi_city_lighting.py
 
 `main()` only runs the demonstration for one *n*. The experiments take much longer, so they are started with a separate command from the project folder.
 
-Quick test (about 10 seconds):
+Quick test (about 5 seconds):
 
 ```bash
 python -c "import multi_city_lighting as m; rows = m.run_experiment([5, 10, 20], trials=3, algorithms=m.COMPARED_ALGORITHMS); m.summarise_results(rows)"
 ```
 
-Full experiment for the report (about 30 minutes, measured before A2 was merged; most of the time is A1 reaching the time limit at large *n*):
+Full experiment for the report (about 30 minutes; most of the time is A1 reaching the time limit at large *n*):
 
 ```bash
 python -c "import multi_city_lighting as m; rows = m.run_experiment([5, 10, 20, 30, 50, 75, 100], algorithms=m.COMPARED_ALGORITHMS, max_steps=1000, max_restarts=9); m.summarise_results(rows); m.plot_comparison(rows, 'runtime_seconds', 'compare_time.png'); m.plot_comparison(rows, 'constraint_checks', 'compare_checks.png')"
@@ -293,7 +293,7 @@ Min-Conflicts without restarts (one attempt of 10,000 steps) on the same maps, t
 python -c "import multi_city_lighting as m; rows = m.run_experiment([50, 75, 100, 150, 200], k_values=(4,), algorithms=('A3',), max_steps=10000, max_restarts=0, csv_path='results_a3_norestart.csv'); m.summarise_results(rows)"
 ```
 
-Ablation for M1 (Section 7, Person 2): A1, A2 and two variants that each keep only one technique (`BT+MRV`: MRV and Degree; `BT+FC`: forward checking), to show which technique contributes most. Every *n* from 5 through 50 is tested and saved to a separate file (about 40 minutes):
+Ablation for M1 (Section 7, Person 2): A1, A2 and two variants that each keep only one technique (`BT+MRV`: MRV and Degree; `BT+FC`: forward checking), to show which technique contributes most. Every *n* from 5 through 50 is tested and saved to a separate file (about 35 minutes; most of the time is A1 reaching the time limit at large *n*):
 
 ```bash
 python -c "import multi_city_lighting as m; rows = m.run_experiment(list(range(5, 51)), algorithms=('A1', 'A2', 'BT+MRV', 'BT+FC'), csv_path='results_ablation.csv'); m.summarise_results(rows)"
