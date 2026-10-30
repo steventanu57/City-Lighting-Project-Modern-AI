@@ -1,0 +1,66 @@
+﻿
+results.csv
+   [PASS] 1120 rows = 7 n x 10 maps x 2 k x 8 runs
+   [PASS] n, k and algorithms exactly as asked
+   [PASS] map seeds are 1000 * n + trial (same maps for every method)
+   [PASS] no NOT_IMPLEMENTED
+   [PASS] complete methods never disagree on a map (SAT vs UNSAT)
+   [PASS] one instance status per (map, k)
+   [PASS] SOLVABLE exactly when some method found a colouring, or k = 4 (Four Colour Theorem)
+   [PASS] every k = 4 map really got a verified colouring from a complete method
+   [PASS] no colouring on a map the parity proof rules out
+   statuses per algorithm: {'A1': {'SAT': 59, 'UNSAT': 36, 'TIMEOUT': 45}, 'A2': {'SAT': 82, 'UNSAT': 58}, 'A3': {'SAT': 410, 'FAILED': 290}, 'M3': {'SAT': 82, 'UNSAT': 58}}
+   instances: {'SOLVABLE': 82, 'UNSAT': 58}
+
+results_large.csv
+   [PASS] 240 rows = 2 n x 10 maps x 2 k x 6 runs
+   [PASS] n, k and algorithms exactly as asked
+   [PASS] map seeds are 1000 * n + trial (same maps for every method)
+   [PASS] no NOT_IMPLEMENTED
+   [PASS] complete methods never disagree on a map (SAT vs UNSAT)
+   [PASS] one instance status per (map, k)
+   [PASS] SOLVABLE exactly when some method found a colouring, or k = 4 (Four Colour Theorem)
+   [PASS] every k = 4 map really got a verified colouring from a complete method
+   [PASS] no colouring on a map the parity proof rules out
+   statuses per algorithm: {'A3': {'FAILED': 138, 'SAT': 62}, 'M3': {'UNSAT': 20, 'SAT': 20}}
+   instances: {'UNSAT': 20, 'SOLVABLE': 20}
+
+results_a3_norestart.csv
+   [PASS] 250 rows = 5 n x 10 maps x 1 k x 5 runs
+   [PASS] n, k and algorithms exactly as asked
+   [PASS] map seeds are 1000 * n + trial (same maps for every method)
+   [PASS] no NOT_IMPLEMENTED
+   [PASS] complete methods never disagree on a map (SAT vs UNSAT)
+   [PASS] one instance status per (map, k)
+   [PASS] SOLVABLE exactly when some method found a colouring, or k = 4 (Four Colour Theorem)
+   [PASS] no colouring on a map the parity proof rules out
+   statuses per algorithm: {'A3': {'FAILED': 145, 'SAT': 105}}
+   instances: {'SOLVABLE': 50}
+
+results_ablation.csv
+   [PASS] 3680 rows = 46 n x 10 maps x 2 k x 4 runs
+   [PASS] n, k and algorithms exactly as asked
+   [PASS] map seeds are 1000 * n + trial (same maps for every method)
+   [PASS] no NOT_IMPLEMENTED
+   [PASS] complete methods never disagree on a map (SAT vs UNSAT)
+   [PASS] one instance status per (map, k)
+   [PASS] SOLVABLE exactly when some method found a colouring, or k = 4 (Four Colour Theorem)
+   [PASS] every k = 4 map really got a verified colouring from a complete method
+   [PASS] no colouring on a map the parity proof rules out
+   statuses per algorithm: {'A1': {'SAT': 469, 'UNSAT': 426, 'TIMEOUT': 25}, 'A2': {'SAT': 487, 'UNSAT': 433}, 'BT+MRV': {'SAT': 487, 'UNSAT': 433}, 'BT+FC': {'SAT': 486, 'UNSAT': 433, 'TIMEOUT': 1}}
+   instances: {'SOLVABLE': 487, 'UNSAT': 433}
+
+Restarts (k = 4, A3 success rate on SOLVABLE maps)
+   n= 50: with restarts 100% of 50 | without  72% of 50
+   n= 75: with restarts 100% of 50 | without  66% of 50
+   n=100: with restarts 100% of 50 | without  42% of 50
+   n=150: with restarts  94% of 50 | without  30% of 50
+   n=200: with restarts  30% of 50 | without   0% of 50
+
+Ablation: runs that timed out (out of 20 per n), n >= 30
+   A1     : total  25, first n with a timeout: 39
+   A2     : total   0, first n with a timeout: None
+   BT+MRV : total   0, first n with a timeout: None
+   BT+FC  : total   1, first n with a timeout: 49
+
+ALL CHECKS PASSED

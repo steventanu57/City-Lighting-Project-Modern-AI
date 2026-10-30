@@ -1,0 +1,24 @@
+Enter the number of cities n: Cities: 10 | Roads: 20
+
+k = 3
+  A1 (Baseline)   SAT              0.0001s checks=91
+  A2 (M1)         SAT              0.0002s checks=160
+  A3 (M2)         SAT              0.0010s checks=2590
+  M3 (M3)         SAT              0.0001s checks=44
+
+k = 4
+  A1 (Baseline)   SAT              0.0001s checks=46
+  A2 (M1)         SAT              0.0002s checks=283
+  A3 (M2)         SAT              0.0002s checks=330
+  M3 (M3)         SAT              0.0001s checks=35
+
+Saved in the folder the program was run from:
+  map_n10.png
+  map_n10_k3_A1.png
+  map_n10_k3_A2.png
+  map_n10_k3_A3.png
+  map_n10_k3_M3.png
+  map_n10_k4_A1.png
+  map_n10_k4_A2.png
+  map_n10_k4_A3.png
+  map_n10_k4_M3.png

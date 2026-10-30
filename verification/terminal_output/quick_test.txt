@@ -1,0 +1,70 @@
+run_experiment: n=5 done (3 maps, 0.0s)
+run_experiment: n=10 done (3 maps, 1.3s)
+run_experiment: n=20 done (3 maps, 2.4s)
+
+Instances (one per map and k)
+    n  k  maps  SOLVABLE  UNSAT  UNRESOLVED
+    5  3     3         3      0           0
+    5  4     3         3      0           0
+   10  3     3         1      2           0
+   10  4     3         3      0           0
+   20  3     3         0      3           0
+   20  4     3         3      0           0
+
+Outcomes per algorithm
+  finished = complete methods: % of runs that ended in SAT or UNSAT
+  success  = local search: % of runs that found a colouring, on SOLVABLE maps only
+  fallback = M3 with k = 4: % of runs that needed the A1 fallback
+    n  k  algorithm  runs   SAT  UNSAT  FAILED  TIMEOUT  finished  success  fallback
+    5  3  A1            3     3      0       0        0      100%        -         -
+    5  3  A2            3     3      0       0        0      100%        -         -
+    5  3  A3           15    15      0       0        0         -     100%         -
+    5  3  M3            3     3      0       0        0      100%        -         -
+    5  4  A1            3     3      0       0        0      100%        -         -
+    5  4  A2            3     3      0       0        0      100%        -         -
+    5  4  A3           15    15      0       0        0         -     100%         -
+    5  4  M3            3     3      0       0        0      100%        -        0%
+   10  3  A1            3     1      2       0        0      100%        -         -
+   10  3  A2            3     1      2       0        0      100%        -         -
+   10  3  A3           15     5      0      10        0         -     100%         -
+   10  3  M3            3     1      2       0        0      100%        -         -
+   10  4  A1            3     3      0       0        0      100%        -         -
+   10  4  A2            3     3      0       0        0      100%        -         -
+   10  4  A3           15    15      0       0        0         -     100%         -
+   10  4  M3            3     3      0       0        0      100%        -        0%
+   20  3  A1            3     0      3       0        0      100%        -         -
+   20  3  A2            3     0      3       0        0      100%        -         -
+   20  3  A3           15     0      0      15        0         -        -         -
+   20  3  M3            3     0      3       0        0      100%        -         -
+   20  4  A1            3     3      0       0        0      100%        -         -
+   20  4  A2            3     3      0       0        0      100%        -         -
+   20  4  A3           15    15      0       0        0         -     100%         -
+   20  4  M3            3     3      0       0        0      100%        -        0%
+
+Cost per algorithm (mean +/- std over runs that ended in SAT or UNSAT;
+  * = some runs timed out or failed and are left out, so the real cost is higher)
+    n  k  algorithm  runs            runtime (s)            constraint checks
+    5  3  A1            3      0.0001 +/- 0.0001               14 +/- 1         
+    5  3  A2            3      0.0001 +/- 0.0000               74 +/- 0         
+    5  3  A3           15      0.0001 +/- 0.0000              121 +/- 93        
+    5  3  M3            3      0.0000 +/- 0.0000               13 +/- 1         
+    5  4  A1            3      0.0000 +/- 0.0000               14 +/- 1         
+    5  4  A2            3      0.0001 +/- 0.0000              127 +/- 0         
+    5  4  A3           15      0.0000 +/- 0.0000               55 +/- 20        
+    5  4  M3            3      0.0000 +/- 0.0000               15 +/- 0         
+   10  3  A1            3      0.0006 +/- 0.0004              706 +/- 504       
+   10  3  A2            3      0.0003 +/- 0.0001              365 +/- 148       
+   10  3  A3           15      0.0005 +/- 0.0003            1,485 +/- 860       *
+   10  3  M3            3      0.0001 +/- 0.0000               41 +/- 11        
+   10  4  A1            3      0.0001 +/- 0.0000               47 +/- 1         
+   10  4  A2            3      0.0001 +/- 0.0000              291 +/- 1         
+   10  4  A3           15      0.0002 +/- 0.0001              431 +/- 259       
+   10  4  M3            3      0.0001 +/- 0.0000               41 +/- 4         
+   20  3  A1            3      0.0103 +/- 0.0035           13,455 +/- 5,285     
+   20  3  A2            3      0.0008 +/- 0.0002              968 +/- 208       
+   20  3  A3           15  every run timed out or failed
+   20  3  M3            3      0.0001 +/- 0.0000               26 +/- 7         
+   20  4  A1            3      0.0003 +/- 0.0001              514 +/- 233       
+   20  4  A2            3      0.0004 +/- 0.0000              594 +/- 12        
+   20  4  A3           15      0.0005 +/- 0.0003            1,683 +/- 957       
+   20  4  M3            3      0.0001 +/- 0.0000               97 +/- 2         

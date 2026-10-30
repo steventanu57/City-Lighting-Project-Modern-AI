@@ -1,0 +1,33 @@
+
+Instances (one per map and k)
+    n  k  maps  SOLVABLE  UNSAT  UNRESOLVED
+  150  3    10         0     10           0
+  150  4    10        10      0           0
+  200  3    10         0     10           0
+  200  4    10        10      0           0
+
+Outcomes per algorithm
+  finished = complete methods: % of runs that ended in SAT or UNSAT
+  success  = local search: % of runs that found a colouring, on SOLVABLE maps only
+  fallback = M3 with k = 4: % of runs that needed the A1 fallback
+    n  k  algorithm  runs   SAT  UNSAT  FAILED  TIMEOUT  finished  success  fallback
+  150  3  A3           50     0      0      50        0         -        -         -
+  150  3  M3           10     0     10       0        0      100%        -         -
+  150  4  A3           50    47      0       3        0         -      94%         -
+  150  4  M3           10    10      0       0        0      100%        -        0%
+  200  3  A3           50     0      0      50        0         -        -         -
+  200  3  M3           10     0     10       0        0      100%        -         -
+  200  4  A3           50    15      0      35        0         -      30%         -
+  200  4  M3           10    10      0       0        0      100%        -        0%
+
+Cost per algorithm (mean +/- std over runs that ended in SAT or UNSAT;
+  * = some runs timed out or failed and are left out, so the real cost is higher)
+    n  k  algorithm  runs            runtime (s)            constraint checks
+  150  3  A3           50  every run timed out or failed
+  150  3  M3           10      0.0005 +/- 0.0001               43 +/- 22        
+  150  4  A3           50      0.0602 +/- 0.0460          202,764 +/- 156,535   *
+  150  4  M3           10      0.0034 +/- 0.0008            8,737 +/- 4,134     
+  200  3  A3           50  every run timed out or failed
+  200  3  M3           10      0.0008 +/- 0.0001               51 +/- 34        
+  200  4  A3           50      0.1438 +/- 0.0560          462,171 +/- 184,161   *
+  200  4  M3           10      0.0058 +/- 0.0026           12,699 +/- 1,725     

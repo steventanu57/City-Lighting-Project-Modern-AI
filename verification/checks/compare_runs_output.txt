@@ -1,0 +1,17 @@
+results.csv: same 1120 runs: True | answered both times: 1071, identical in status and every counter: 1071
+   per-map verdicts identical: True
+   runs that hit the 30 s limit only once: 4 ({'A1': 4})
+     A1 n=50 k=3 map 50002: UNSAT in 28.7 s one time, TIMEOUT the other
+     A1 n=50 k=4 map 50002: SAT in 28.7 s one time, TIMEOUT the other
+     A1 n=50 k=4 map 50003: SAT in 18.4 s one time, TIMEOUT the other
+     A1 n=50 k=3 map 50009: UNSAT in 28.7 s one time, TIMEOUT the other
+   total runtime: Phase D 27.6 min, yours 26.9 min
+results_large.csv: same 240 runs: True | answered both times: 240, identical in status and every counter: 240
+   per-map verdicts identical: True
+   total runtime: Phase D 0.6 min, yours 0.6 min
+results_a3_norestart.csv: same 250 runs: True | answered both times: 250, identical in status and every counter: 250
+   per-map verdicts identical: True
+   total runtime: Phase D 0.6 min, yours 0.5 min
+results_ablation.csv: same 3680 runs: True | answered both times: 3654, identical in status and every counter: 3654
+   per-map verdicts identical: True
+   total runtime: Phase D 33.9 min, yours 33.6 min

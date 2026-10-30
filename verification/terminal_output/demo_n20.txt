@@ -1,0 +1,26 @@
+Enter the number of cities n: Cities: 20 | Roads: 50
+
+3 colours are impossible for this map: inner cities [0, 3, 5, 6, 9, 10, 17, 18, 19] have an odd number of neighbours (ringed in red on the k = 3 maps).
+
+k = 3
+  A1 (Baseline)   UNSAT            0.0176s checks=22911
+  A2 (M1)         UNSAT            0.0006s checks=654
+  A3 (M2)         FAILED           0.1595s checks=512720
+  M3 (M3)         UNSAT            0.0001s checks=38
+
+k = 4
+  A1 (Baseline)   SAT              0.0002s checks=260
+  A2 (M1)         SAT              0.0005s checks=729
+  A3 (M2)         SAT              0.0006s checks=1728
+  M3 (M3)         SAT              0.0002s checks=105
+
+Saved in the folder the program was run from:
+  map_n20.png
+  map_n20_k3_A1.png
+  map_n20_k3_A2.png
+  map_n20_k3_A3.png
+  map_n20_k3_M3.png
+  map_n20_k4_A1.png
+  map_n20_k4_A2.png
+  map_n20_k4_A3.png
+  map_n20_k4_M3.png

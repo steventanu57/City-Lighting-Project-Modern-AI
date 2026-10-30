@@ -1,0 +1,25 @@
+1. Demo map (n = 20, seed 42), all four methods
+   roads identical to SciPy's Delaunay and = 3n-3-h: True
+   odd inner cities (own count): [0, 3, 5, 6, 9, 10, 17, 18, 19]
+   k=3 A1: UNSAT   -> UNSAT backed by odd cities
+   k=3 A2: UNSAT   -> UNSAT backed by odd cities
+   k=3 A3: FAILED  -> proves nothing
+   k=3 M3: UNSAT   -> UNSAT backed by odd cities
+   k=4 A1: SAT     -> colouring checked: valid
+   k=4 A2: SAT     -> colouring checked: valid
+   k=4 A3: SAT     -> colouring checked: valid
+   k=4 M3: SAT     -> colouring checked: valid
+2. Every map used in the experiments: n = 5-50 (ablation), 75, 100, 150, 200; 10 maps each
+   maps: 500, roads differ from SciPy or count wrong: 0
+   colourings checked: 1034 (of which k = 3: 54), invalid: 0
+   UNSAT answers: 926, without an odd inner city to back them: 0
+3. Demo map n = 10 (seed 42), all four methods
+   roads identical to SciPy's Delaunay and = 3n-3-h: True | odd inner cities: []
+   k=3 A1: SAT     -> colouring checked: valid
+   k=3 A2: SAT     -> colouring checked: valid
+   k=3 A3: SAT     -> colouring checked: valid
+   k=3 M3: SAT     -> colouring checked: valid
+   k=4 A1: SAT     -> colouring checked: valid
+   k=4 A2: SAT     -> colouring checked: valid
+   k=4 A3: SAT     -> colouring checked: valid
+   k=4 M3: SAT     -> colouring checked: valid

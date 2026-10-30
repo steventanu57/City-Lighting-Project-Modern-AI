@@ -1,0 +1,28 @@
+
+Instances (one per map and k)
+    n  k  maps  SOLVABLE  UNSAT  UNRESOLVED
+   50  4    10        10      0           0
+   75  4    10        10      0           0
+  100  4    10        10      0           0
+  150  4    10        10      0           0
+  200  4    10        10      0           0
+
+Outcomes per algorithm
+  finished = complete methods: % of runs that ended in SAT or UNSAT
+  success  = local search: % of runs that found a colouring, on SOLVABLE maps only
+  fallback = M3 with k = 4: % of runs that needed the A1 fallback
+    n  k  algorithm  runs   SAT  UNSAT  FAILED  TIMEOUT  finished  success  fallback
+   50  4  A3           50    36      0      14        0         -      72%         -
+   75  4  A3           50    33      0      17        0         -      66%         -
+  100  4  A3           50    21      0      29        0         -      42%         -
+  150  4  A3           50    15      0      35        0         -      30%         -
+  200  4  A3           50     0      0      50        0         -       0%         -
+
+Cost per algorithm (mean +/- std over runs that ended in SAT or UNSAT;
+  * = some runs timed out or failed and are left out, so the real cost is higher)
+    n  k  algorithm  runs            runtime (s)            constraint checks
+   50  4  A3           50      0.0031 +/- 0.0018           10,459 +/- 6,422     *
+   75  4  A3           50      0.0072 +/- 0.0037           23,893 +/- 12,745    *
+  100  4  A3           50      0.0104 +/- 0.0040           34,552 +/- 13,904    *
+  150  4  A3           50      0.0159 +/- 0.0054           52,600 +/- 19,121    *
+  200  4  A3           50  every run timed out or failed
