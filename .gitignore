@@ -7,3 +7,6 @@ venv/
 # Program output
 *.png
 results*.csv
+
+# Our final experiment results are kept in the repo
+!final_results/results*.csv
