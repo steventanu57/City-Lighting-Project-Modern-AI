@@ -1,6 +1,6 @@
-# Multi-City Lighting — Graph Colouring as a CSP
+# Multi-City Lighting: Graph Colouring as a CSP
 
-Modern AI Group Assignment · Topic: Constraint Satisfaction Problems
+Group 17 project for CSCI323 Modern AI: Multi-City Lighting as a Constraint Satisfaction Problem.
 
 ## Description
 
@@ -22,18 +22,20 @@ and compares their performance as *n* grows:
 | File | Contents |
 |---|---|
 | `multi_city_lighting.py` | The whole program |
-| `projectoverview.md` | Requirements, methods, theory, experiments, responsibilities, and how to run (Section 9) |
+| `projectoverview.md` | Requirements, methods, theory, experiments, who did what, and how to run (Section 9) |
+| `final_results/` | Our four final experiment CSVs (5,290 runs), used for every number in the report |
 
 ## Requirements
 
-Tested on Windows 11 with:
-- Python 3.12.10
-- numpy 2.2.6
-- scipy 1.18.1
-- matplotlib 3.10.3
+The experiments ran on Windows with Python 3.12. We reproduced them with Python 3.12.10,
+NumPy 2.2.6, SciPy 1.18.1 and Matplotlib 3.10.3, which gave the same constraint-check
+counts on every run that finished on both machines.
 
 Install the packages with:
 
 ```bash
 pip install numpy scipy matplotlib
 ```
+
+Then run `python multi_city_lighting.py` and enter the number of cities. See
+`projectoverview.md`, Section 9, for the experiments and how to compare a rerun with our results.

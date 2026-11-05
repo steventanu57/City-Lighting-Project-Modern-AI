@@ -1,24 +1,25 @@
 """
-Multi-City Lighting — Graph Colouring as a CSP
-See projectoverview.md for the overview and responsibilities.
+Multi-City Lighting: graph colouring as a CSP
+CSCI323 Modern AI, Group 17. projectoverview.md explains the methods,
+theory and experiments, and how to run everything.
 
-    BLOCK 0  Shared                       (everyone — agree first, then freeze)
-    BLOCK 1  Map, A1, M3, plots           (Person 1)
-    BLOCK 2  A2 smart backtracking        (Person 2)
-    BLOCK 3  A3 min-conflicts, experiments(Person 3)
-    BLOCK 4  Main                         (Person 1)
+The file is split into blocks (who wrote each one, from the commit history):
+    BLOCK 0  Shared code used by every method          (Jeannice)
+    BLOCK 1  Maps, A1, M3 and plots                    (Jeannice)
+    BLOCK 2  A2 and its ablation variants              (Hong Shen)
+    BLOCK 3  A3 and instance status                    (Edric)
+             experiment runner and summaries           (Steven)
+    BLOCK 4  Main: the demo for one n                  (Jeannice)
 
-Only edit your own block.
-
-Methods (code name -> report name):
+Code names and report names:
     A1  naive backtracking                 -> Baseline
     A2  backtracking + MRV/Degree/LCV/FC   -> M1 (established method)
-    A3  min-conflicts local search         -> M2 (method from the literature)
+    A3  min-conflicts local search         -> M2 (method from a research article)
     M3  structure-aware solver             -> M3 (proposed method)
 """
 
 # =============================================================================
-# BLOCK 0 — SHARED (everyone)
+# BLOCK 0: SHARED CODE (used by every block)
 # =============================================================================
 import csv
 import random
@@ -39,8 +40,9 @@ COLOUR_HEX = {"Red": "#d62728", "Green": "#2ca02c",
 
 EPS = 1e-12
 SHOW_PLOTS = False        # True = open windows, False = only save PNG files
-DEFAULT_TIMEOUT = 30.0    # seconds (A1, A2)
-DEFAULT_MAX_STEPS = 10_000  # Min-Conflicts
+DEFAULT_TIMEOUT = 30.0    # seconds per run, for every method
+DEFAULT_MAX_STEPS = 10_000  # Min-Conflicts repairs per attempt. The demo uses this;
+                            # the final experiments used 1,000 with 9 restarts.
 
 # Run status (one algorithm run)
 SAT, UNSAT, TIMEOUT, FAILED = "SAT", "UNSAT", "TIMEOUT", "FAILED"
@@ -59,11 +61,11 @@ class SearchTimeout(Exception):
 
 @dataclass
 class Metrics:
-    constraint_checks: int = 0     # all algorithms (counted in csp.check)
-    assignment_attempts: int = 0   # A1, A2
-    backtracks: int = 0            # A1, A2
+    constraint_checks: int = 0     # every method (counted in csp.check)
+    assignment_attempts: int = 0   # backtracking: A1, A2, BT+MRV, BT+FC, M3's fallback
+    backtracks: int = 0            # backtracking, same methods as above
     repair_iterations: int = 0     # A3
-    restarts: int = 0              # A3
+    restarts: int = 0              # A3, attempts after the first one
 
 
 @dataclass
@@ -88,7 +90,11 @@ class RunResult:
 
 
 class TimeGuard:
-    """Call guard.check() inside loops / recursion to respect the time limit."""
+    """Time limit for one run. Call guard.check() inside loops / recursion.
+
+    The clock is only read at those calls, so a run can go slightly over the
+    limit before it stops. It is not a hard cutoff.
+    """
 
     def __init__(self, timeout_seconds=None):
         self.deadline = None if timeout_seconds is None else time.perf_counter() + timeout_seconds
@@ -110,7 +116,8 @@ class MapColouringCSP:
         self.metrics = Metrics()
 
     def check(self, colour_a, colour_b):
-        """The ONLY place a constraint check is counted. True = allowed."""
+        """Compare two colours and count one constraint check. True = allowed.
+        Every method compares colours here, so their counts can be compared."""
         self.metrics.constraint_checks += 1
         return colour_a != colour_b
 
@@ -140,8 +147,11 @@ def run_algorithm(name, adjacency, colours, map_seed=None, run_seed=None,
     """Run any algorithm from ALGORITHMS and return a RunResult.
 
     Algorithm shape:  func(csp, guard, rng, **params) -> {city: colour} or None
-      None from a complete algorithm (A1, A2) -> UNSAT
-      None from local search (A3)             -> FAILED
+      None from a complete method (A1, A2, BT+MRV, BT+FC, M3) -> UNSAT
+      None from local search (A3)                             -> FAILED
+
+    The runtime covers the call itself, including creating the time guard and
+    the random number generator. It stops before the colouring is verified.
     """
     func, is_complete = ALGORITHMS[name]
     csp = MapColouringCSP(adjacency, colours)
@@ -153,7 +163,7 @@ def run_algorithm(name, adjacency, colours, map_seed=None, run_seed=None,
         colouring, status = None, TIMEOUT
     except NotImplementedError:
         colouring, status = None, NOT_IMPLEMENTED
-    runtime = time.perf_counter() - start      # timer stops BEFORE verification
+    runtime = time.perf_counter() - start      # stop the timer before verifying
 
     if status is None:
         if colouring is None:
@@ -168,8 +178,9 @@ def run_algorithm(name, adjacency, colours, map_seed=None, run_seed=None,
 
 
 # =============================================================================
-# BLOCK 1 — PERSON 1: MAP, A1, M3, PLOTS
-# Aim: correct maps, all pictures, the baseline (A1) and the proposed method (M3).
+# BLOCK 1: MAPS, A1, M3 AND PLOTS (Jeannice)
+# Makes and checks the maps, the baseline (A1), the proposed method (M3)
+# and all the pictures.
 #
 #   1.1 Map generation      generate_cities, generate_roads, build_adjacency, make_map
 #   1.2 Map validation      validate_map (+ helpers)
@@ -366,10 +377,11 @@ def check_3colour_parity(adjacency, tri):
     Returns UNSAT if some inner city has an odd number of neighbours,
     otherwise NEEDS_CHECK.
 
-    For maps that pass validate_map() the test works in both directions:
-    NEEDS_CHECK maps are always 3-colourable (see M3's triangle propagation
-    and projectoverview.md). The label NEEDS_CHECK is kept because Block 3
-    uses it; experiments still confirm it with complete search.
+    For maps that pass validate_map() the test works both ways: a map with
+    no odd inner city can always be coloured with 3 colours (see M3's
+    triangle propagation and projectoverview.md, Section 4.2). It still
+    returns NEEDS_CHECK rather than SAT, because SAT is only recorded once
+    a solver has found and verified a colouring.
     """
     return UNSAT if odd_inner_cities(adjacency, tri) else NEEDS_CHECK
 
@@ -436,7 +448,10 @@ def structure_aware_solver(csp, guard, rng):
 
 def _find_triangles(adjacency):
     """All triples of cities that are pairwise connected by roads.
-    Returns (triangles, edge_to_triangles)."""
+    Returns (triangles, edge_to_triangles).
+
+    This work is part of M3's runtime but adds no constraint checks, which is
+    why M3 at k = 3 has few checks but a high time per check."""
     triangles = []
     edge_to_triangles = {}
     for u in range(len(adjacency)):
@@ -526,7 +541,11 @@ def _m3_triangle_propagation(csp, guard):
 def _smallest_last_order(csp, guard):
     """Repeatedly remove the city with the fewest remaining neighbours; colour
     in the reverse order. In a planar map a removed city always has <= 5
-    remaining neighbours, so each city sees at most 5 coloured neighbours."""
+    remaining neighbours, so each city sees at most 5 coloured neighbours.
+    With 4 colours those 5 can still block every colour, which is when a
+    Kempe swap is needed.
+
+    Each removal scans all remaining cities, so the ordering is O(n^2)."""
     degree = {v: len(csp.neighbours[v]) for v in csp.variables}
     removed = []
     remaining = set(csp.variables)
@@ -557,13 +576,15 @@ def _kempe_chain(csp, guard, start, colour, a, b):
 
 
 def _swap(colour, chain, a, b):
+    """Swap colours a and b on every city in the chain."""
     for city in chain:
         colour[city] = b if colour[city] == a else a
 
 
 def _free_colour_with_kempe(csp, guard, v, colour):
     """Try to free a colour for v by swapping one Kempe chain. Returns the freed
-    colour, or None if no single swap works (possible in theory: Heawood, 1890)."""
+    colour, or None if no single swap works. That can happen, which is why
+    M3 keeps A1 as a fallback."""
     for a in csp.colours:
         for b in csp.colours:
             if a == b:
@@ -579,7 +600,9 @@ def _free_colour_with_kempe(csp, guard, v, colour):
 
 
 def _m3_kempe_colouring(csp, guard, rng):
-    """k = 4. Smallest-last order + Kempe chain recolouring; A1 as fallback."""
+    """k = 4. Smallest-last order + Kempe chain recolouring. If no swap frees a
+    colour, A1 colours the whole map again from scratch, under the same time
+    limit, as a complete fallback."""
     colour = {}
     for v in _smallest_last_order(csp, guard):
         guard.check()
@@ -672,7 +695,7 @@ def plot_comparison(rows, metric="runtime_seconds", save_path=None, show=SHOW_PL
     rows   : list of dicts from RunResult.to_row() (or read back from results.csv)
     metric : "runtime_seconds" or "constraint_checks"
 
-    Unanswered rule (Person 3 uses the same rule in summarise_results):
+    Unanswered rule (summarise_results uses the same rule):
       - TIMEOUT and FAILED runs prove nothing, so they are left out of the
         mean and std (NOT_IMPLEMENTED runs are ignored completely).
         SAT and UNSAT runs are real answers and are included.
@@ -733,8 +756,9 @@ def plot_comparison(rows, metric="runtime_seconds", save_path=None, show=SHOW_PL
 
 
 # =============================================================================
-# BLOCK 2 — PERSON 2: A2 (MRV + DEGREE + LCV + FORWARD CHECKING)
-# Aim: the fastest complete algorithm. Compare colours only via csp.check().
+# BLOCK 2: A2 (MRV + DEGREE + LCV + FORWARD CHECKING) (Hong Shen)
+# Complete backtracking with heuristics, plus the ablation variants.
+# Colours are only compared through csp.check(), like every other method.
 # =============================================================================
 def select_unassigned_variable(csp, assignment, domains, use_mrv=True, use_fc=True):
     """Choose the next unassigned city using MRV and the degree tie-break.
@@ -743,6 +767,9 @@ def select_unassigned_variable(csp, assignment, domains, use_mrv=True, use_fc=Tr
     assignment instead of relying on domains that have not been pruned.
     Ties go to the city with the most unassigned neighbours, then lowest index.
     When MRV is disabled, choose the lowest-index unassigned city.
+
+    This scans every unassigned city on each call. With forward checking on,
+    the scan adds no constraint checks, so A2's time per check grows with n.
     """
     unassigned = [v for v in csp.variables if v not in assignment]
 
@@ -769,7 +796,7 @@ def order_domain_values(csp, var, assignment, domains, use_lcv=True):
     """Order a city's available colours using the least-constraining value.
 
     LCV puts first the colour that rules out the fewest values in unassigned
-    neighbours. When disabled, colours retain their current domain order.
+    neighbours. When disabled, colours keep their current order.
     """
     if not use_lcv:
         return list(domains[var])
@@ -791,10 +818,11 @@ def order_domain_values(csp, var, assignment, domains, use_lcv=True):
 
 
 def forward_check(csp, var, value, assignment, domains):
-    """Prune incompatible colours from unassigned neighbours' domains.
+    """Remove `value` from the colours left for each unassigned neighbour.
 
-    The returned domain mapping is independent, but only changed neighbours'
-    lists are copied; untouched domain lists are shared and never mutated.
+    Returns (new_domains, ok). ok is False as soon as a neighbour has no
+    colour left. Only the changed neighbours get new lists; the others share
+    the old lists, which are never changed in place.
     """
     new_domains = domains.copy()
 
@@ -815,11 +843,13 @@ def forward_check(csp, var, value, assignment, domains):
 
 
 def backtracking_generic(csp, guard, rng, use_mrv=True, use_lcv=True, use_fc=True):
-    """Complete backtracking with optional MRV, LCV and forward checking.
+    """Complete backtracking. MRV, LCV and forward checking can each be turned
+    off, which is how the ablation variants are made.
 
-    Failed assignments are removed before the search returns to their caller.
-    Each recursive call receives its own domain mapping; forward checking
-    copies only the lists it prunes.
+    A colour that fails is removed from the assignment before the next one
+    is tried. Each level of recursion gets its own domains, so going back
+    needs no undo step. is_consistent() is still called when forward
+    checking is on, and those checks are counted.
     """
     assignment = {}
     domains = {
@@ -876,7 +906,7 @@ def backtracking_fc(csp, guard, rng):
     )
 
 
-# Ablation variants isolate MRV/degree and forward checking.
+# Ablation variants: A2 with some of its parts turned off.
 def bt_mrv(csp, guard, rng):
     """Backtrack with MRV and degree tie-breaking, without LCV or FC."""
     return backtracking_generic(
@@ -893,19 +923,22 @@ def bt_fc(csp, guard, rng):
     )
 
 # =============================================================================
-# BLOCK 3 — PERSON 3: A3 (MIN-CONFLICTS) + EXPERIMENTS
-# Aim: local search, and the comparison data for requirement (d).
+# BLOCK 3: A3 (MIN-CONFLICTS) AND EXPERIMENTS
+# min_conflicts and determine_instance_status (Edric); run_experiment and
+# summarise_results (Steven). Produces the comparison data for requirement (d).
 # =============================================================================
 def min_conflicts(csp, guard, rng, max_steps=DEFAULT_MAX_STEPS, max_restarts=0):
     """Repair a random complete colouring using Min-Conflicts.
 
     max_steps is the repair limit per attempt. max_restarts counts extra
     attempts, so the total repair limit is (max_restarts + 1) * max_steps.
-    All attempts share the same guard and random-number generator.
+    All attempts share the same time limit and random number generator.
 
-    Only the changed city and its neighbours need their conflict status
-    updated. Candidates are sorted before rng.choice to preserve city order.
-    Returns a colouring, or None when all attempts fail (not proof of UNSAT).
+    After each repair only the changed city and its neighbours have their
+    conflict status updated. The conflicted cities are sorted before
+    rng.choice, so the same seed always picks the same city.
+    Returns a colouring, or None when all attempts fail (this does not
+    prove UNSAT).
     """
     for name, value in (("max_steps", max_steps), ("max_restarts", max_restarts)):
         if isinstance(value, bool) or not isinstance(value, int) or value < 0:
@@ -961,21 +994,18 @@ def min_conflicts(csp, guard, rng, max_steps=DEFAULT_MAX_STEPS, max_restarts=0):
 
 
 def determine_instance_status(k, parity_label, runs):
-    """Classify one validated map and palette using all available evidence.
+    """Label one map and k as SOLVABLE, UNSAT or UNRESOLVED from all its runs.
 
-    Preconditions: the graph passed map validation, SAT results were verified,
-    and every run refers to this same map and k. Missing map seeds cannot
-    establish map identity, so the caller must still supply matching runs.
+    SOLVABLE    a run found a verified colouring, or k = 4 (Four Colour Theorem)
+    UNSAT       k = 3 with an inner city of odd degree, or a complete method
+                searched everything and returned UNSAT
+    UNRESOLVED  neither a colouring nor a proof of impossibility
+    FAILED, TIMEOUT and NOT_IMPLEMENTED runs count as no evidence either way.
 
-    SOLVABLE: a verified SAT result, or k=4 by the Four Colour Theorem.
-    UNSAT: k=3 with an odd-degree interior vertex, or a complete method
-           returned UNSAT after exhausting its search.
-    UNRESOLVED: neither a solution nor an impossibility proof is available.
-    FAILED, TIMEOUT and NOT_IMPLEMENTED provide neither kind of evidence.
-    A passing parity check retains NEEDS_CHECK until a solver confirms SAT.
-
-    Raises ValueError for invalid labels, incompatible runs, an UNSAT result
-    from local search, or contradictory solvable/impossible evidence.
+    All runs must come from the same validated map and the same k; the
+    function can only check this when map seeds are given. Raises ValueError
+    for bad labels, runs from different maps, UNSAT from local search, or
+    results that contradict each other.
     """
     if k not in (3, 4):
         raise ValueError("k must be 3 or 4")
@@ -1020,10 +1050,10 @@ def run_experiment(n_values, k_values=(3, 4), trials=10,
     maps. Complete algorithms run once per (map, k). Local search (A3) is
     random, so it runs `a3_runs` times with run seeds 0, 1, 2, ...
 
-    A3 gets max_steps repairs per attempt and max_restarts extra attempts.
-    Use max_steps=1000, max_restarts=9 for at most 10,000 repairs per run.
-    One timeout covers all attempts; a3_runs counts independent whole runs.
-    The default remains one attempt for compatibility with earlier results.
+    A3 gets max_steps repairs per attempt and max_restarts extra attempts,
+    all under one time limit. The defaults give one attempt of 10,000
+    repairs. The final experiments used max_steps=1000, max_restarts=9,
+    which also allows at most 10,000 repairs per run. a3_runs counts whole runs.
 
     Each row is RunResult.to_row() plus two columns:
       parity          : check_3colour_parity() for k = 3, "N/A" for k = 4
@@ -1084,7 +1114,7 @@ def run_experiment(n_values, k_values=(3, 4), trials=10,
 
 
 def save_results_csv(rows, csv_path="results.csv"):
-    """Write list of dicts to CSV (DONE)."""
+    """Write a list of dicts to a CSV file, one row per run."""
     if rows:
         with open(csv_path, "w", newline="") as f:
             writer = csv.DictWriter(f, fieldnames=list(rows[0]))
@@ -1095,7 +1125,7 @@ def save_results_csv(rows, csv_path="results.csv"):
 def summarise_results(rows):
     """Table per (n, k): #SOLVABLE/#UNSAT/#UNRESOLVED, % finished for A1/A2,
     A3 success rate (on SOLVABLE maps only), mean/std runtime and checks.
-    Also the status counts and the M3 fallback rate (projectoverview.md, Section 5).
+    Also the status counts and the M3 fallback rate (projectoverview.md, Section 5.2).
 
     rows: from run_experiment(), or read back from results.csv (all strings).
     Same rule as plot_comparison: TIMEOUT and FAILED runs prove nothing, so only
@@ -1199,8 +1229,9 @@ def summarise_results(rows):
 
 
 # =============================================================================
-# ALGORITHM REGISTRY (everyone — add lines, never rename)
-# name -> (function, is_complete)
+# ALGORITHM REGISTRY
+# name -> (function, is_complete). The names are stored in the CSV files,
+# so renaming one would break reading old results.
 # =============================================================================
 ALGORITHMS = {
     "A1": (backtracking_search, True),
@@ -1213,14 +1244,19 @@ ALGORITHMS = {
 
 
 # =============================================================================
-# BLOCK 4 — MAIN (Person 1)
+# BLOCK 4: MAIN (Jeannice)
 # =============================================================================
 COMPARED_ALGORITHMS = ("A1", "A2", "A3", "M3")      # baseline + the three methods
 REPORT_NAMES = {"A1": "Baseline", "A2": "M1", "A3": "M2", "M3": "M3"}
 
 
 def demo_single_map(n, seed=42):
-    """Requirements (a), (b), (c), (e) for one n."""
+    """Requirements (a), (b), (c), (e) for one n.
+
+    Uses map seed 42 and runs every compared method with k = 3 and k = 4,
+    saving one PNG per result. A3 runs with its defaults (one attempt of
+    10,000 repairs), not the restart settings of the final experiments.
+    """
     m = make_map(n, seed)
     print(f"Cities: {n} | Roads: {len(m['roads'])}")
     saved = [f"map_n{n}.png"]
@@ -1272,9 +1308,11 @@ def main():
     n = ask_number_of_cities()
     demo_single_map(n)
 
-    # Requirement (d), once Block 3 is done:
+    # Requirement (d) is run separately, with the commands in
+    # projectoverview.md, Section 9.2. The main comparison, for example:
     # rows = run_experiment([5, 10, 20, 30, 50, 75, 100],
-    #                       algorithms=COMPARED_ALGORITHMS)
+    #                       algorithms=COMPARED_ALGORITHMS,
+    #                       max_steps=1000, max_restarts=9)
     # summarise_results(rows)
     # plot_comparison(rows, "runtime_seconds", "compare_time.png")
     # plot_comparison(rows, "constraint_checks", "compare_checks.png")
