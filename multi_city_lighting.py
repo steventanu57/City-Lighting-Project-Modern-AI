@@ -6,6 +6,7 @@ theory and experiments, and how to run everything.
 The file is split into blocks (who wrote each one, from the commit history):
     BLOCK 0  Shared code used by every method          (Jeannice)
     BLOCK 1  Maps, A1, M3 and plots                    (Jeannice)
+             M3+, an improved M3                       (Steven)
     BLOCK 2  A2 and its ablation variants              (Hong Shen)
     BLOCK 3  A3 and instance status                    (Edric)
              experiment runner and summaries           (Steven)
@@ -16,12 +17,14 @@ Code names and report names:
     A2  backtracking + MRV/Degree/LCV/FC   -> M1 (established method)
     A3  min-conflicts local search         -> M2 (method from a research article)
     M3  structure-aware solver             -> M3 (proposed method)
+    M3+ improved structure-aware solver    -> M3+ (faster version of M3)
 """
 
 # =============================================================================
 # BLOCK 0: SHARED CODE (used by every block)
 # =============================================================================
 import csv
+import heapq
 import random
 import time
 from collections import Counter
@@ -187,6 +190,7 @@ def run_algorithm(name, adjacency, colours, map_seed=None, run_seed=None,
 #   1.3 Parity check        check_3colour_parity          (k = 3 analysis)
 #   1.4 Algorithm A1        backtracking_search           (naive backtracking, baseline)
 #   1.5 Algorithm M3        structure_aware_solver        (proposed method)
+#   1.5b Algorithm M3+      structure_aware_solver_plus   (improved M3, Steven)
 #   1.6 Plots               plot_map, plot_comparison
 # =============================================================================
 
@@ -613,6 +617,156 @@ def _m3_kempe_colouring(csp, guard, rng):
             result = backtracking_search(csp, guard, rng)     # complete fallback
             if result is None:
                 raise RuntimeError("M3: A1 found no 4-colouring, which is impossible "
+                                   "for a planar map; check the input map")
+            return result
+        colour[v] = free
+    return colour
+
+
+# ---- 1.5b Algorithm M3+: refined M3 -----------------------------------------
+# Added after the presentation, when we were asked if M3 could be improved.
+# M3 is left as it was, so the final results still match it.
+def structure_aware_solver_plus(csp, guard, rng):
+    """M3+. Works like M3 but skips work M3 did for nothing.
+
+      k = 3 : only finds a triangle when propagation gets to it, so on most
+              maps it stops at the first conflict before finding the rest
+      k = 4 : smallest-last order from a heap, and a Kempe swap that doesn't
+              build chains that can't work
+      fallback: M1 instead of A1, since A1 is too slow on big maps
+
+    For k = 4 the colouring is the same as M3's, just with fewer checks.
+    assignment_attempts > 0 means the fallback ran, same as M3.
+    """
+    k = len(csp.colours)
+    if k == 3:
+        return _m3plus_lazy_propagation(csp, guard)
+    if k == 4:
+        return _m3plus_kempe_colouring(csp, guard, rng)
+    raise ValueError(f"M3+ supports k = 3 or k = 4, got k = {k}")
+
+
+def _m3plus_lazy_propagation(csp, guard):
+    """k = 3. Same idea as _m3_triangle_propagation, except we don't list all
+    the triangles first. When we reach an edge (x, y), the third cities are
+    just the common neighbours of x and y. The order we visit triangles in
+    doesn't change the answer (lemma in projectoverview.md, Section 4.2),
+    so None still means UNSAT."""
+    adjacency = csp.neighbours
+    first = None
+    for u in csp.variables:                  # same first triangle as M3
+        for v in adjacency[u]:
+            if v > u:
+                third = [w for w in adjacency[u] & adjacency[v] if w > v]
+                if third:
+                    first = (u, v, third[0])
+                    break
+        if first:
+            break
+    if first is None:
+        return _m3_two_colouring(csp, guard)
+
+    colour = dict(zip(first, csp.colours))
+    visited = {frozenset(first)}
+    queue = [first]
+    for a, b, c in queue:
+        for x, y in ((a, b), (b, c), (a, c)):
+            for w in adjacency[x] & adjacency[y]:
+                triangle = frozenset((x, y, w))
+                if triangle in visited:
+                    continue
+                guard.check()
+                visited.add(triangle)
+                queue.append((x, y, w))
+
+                if not csp.check(colour[x], colour[y]):
+                    return None
+                forced = next(col for col in csp.colours
+                              if csp.check(col, colour[x]) and csp.check(col, colour[y]))
+                if w not in colour:
+                    colour[w] = forced
+                elif csp.check(colour[w], forced):
+                    return None
+
+    if len(colour) < csp.n:
+        raise RuntimeError("M3+: some cities were not reached by triangle propagation; "
+                           "this map does not satisfy M3's assumptions")
+    return colour
+
+
+def _m3plus_smallest_last_order(csp, guard):
+    """Gives the same order as _smallest_last_order, but uses a heap to find
+    the city with the fewest neighbours left instead of scanning all of them
+    every time (O(m log n) instead of O(n^2)). When a city's degree drops we
+    just push it again and skip the old entry when it comes out."""
+    degree = {v: len(csp.neighbours[v]) for v in csp.variables}
+    queue = [(d, v) for v, d in degree.items()]
+    heapq.heapify(queue)
+    removed, gone = [], set()
+    while queue:
+        guard.check()
+        d, v = heapq.heappop(queue)
+        if v in gone or d != degree[v]:
+            continue
+        gone.add(v)
+        removed.append(v)
+        for nb in csp.neighbours[v]:
+            if nb not in gone:
+                degree[nb] -= 1
+                heapq.heappush(queue, (degree[nb], nb))
+    return removed[::-1]
+
+
+def _m3plus_free_colour(csp, guard, v, colour):
+    """Same result as _free_colour_with_kempe, but cheaper.
+
+    Swapping a and b on a chain only frees colour a for v if all of v's
+    a-coloured neighbours are in the chain and none of its b-coloured ones
+    are. So we only need one chain per (a, b) pair, we can stop walking as
+    soon as we hit a b-neighbour, and we only swap when it's going to work
+    (M3 swapped first, checked, then swapped back). The pairs are tried in
+    the same order as M3, so it picks the same swap."""
+    coloured = [nb for nb in csp.neighbours[v] if nb in colour]
+    for a in csp.colours:
+        a_neighbours = [nb for nb in coloured if not csp.check(colour[nb], a)]
+        if not a_neighbours:
+            continue
+        for b in csp.colours:
+            if a == b:
+                continue
+            b_neighbours = {nb for nb in coloured if not csp.check(colour[nb], b)}
+            start = a_neighbours[0]
+            chain, stack, blocked = {start}, [start], False
+            while stack and not blocked:
+                guard.check()
+                city = stack.pop()
+                for nb in csp.neighbours[city]:
+                    if nb in colour and nb not in chain and (
+                            not csp.check(colour[nb], a) or not csp.check(colour[nb], b)):
+                        if nb in b_neighbours:
+                            blocked = True      # this neighbour would turn into a
+                            break
+                        chain.add(nb)
+                        stack.append(nb)
+            if not blocked and all(nb in chain for nb in a_neighbours):
+                _swap(colour, chain, a, b)
+                return a
+    return None
+
+
+def _m3plus_kempe_colouring(csp, guard, rng):
+    """k = 4. Same as _m3_kempe_colouring but with the faster order and Kempe
+    swap. If no swap works, M1 colours the map from scratch (same time limit)."""
+    colour = {}
+    for v in _m3plus_smallest_last_order(csp, guard):
+        guard.check()
+        free = next((c for c in csp.colours if csp.is_consistent(v, c, colour)), None)
+        if free is None:
+            free = _m3plus_free_colour(csp, guard, v, colour)
+        if free is None:
+            result = backtracking_fc(csp, guard, rng)          # fallback: M1
+            if result is None:
+                raise RuntimeError("M3+: M1 found no 4-colouring, which is impossible "
                                    "for a planar map; check the input map")
             return result
         colour[v] = free
@@ -1177,7 +1331,7 @@ def summarise_results(rows):
             if on_solvable and not is_complete:          # local search: SOLVABLE maps only
                 line["success_pct"] = 100 * sum(r["status"] == SAT
                                                 for r in on_solvable) / len(on_solvable)
-            if implemented and alg == "M3" and k == 4:   # fallback indicator (Section 3)
+            if implemented and alg in ("M3", "M3+") and k == 4:   # fallback indicator (Section 3)
                 line["fallback_pct"] = 100 * sum(int(r["assignment_attempts"]) > 0
                                                  for r in implemented) / len(implemented)
             if answered:
@@ -1202,7 +1356,7 @@ def summarise_results(rows):
     print("\nOutcomes per algorithm")
     print("  finished = complete methods: % of runs that ended in SAT or UNSAT")
     print("  success  = local search: % of runs that found a colouring, on SOLVABLE maps only")
-    print("  fallback = M3 with k = 4: % of runs that needed the A1 fallback")
+    print("  fallback = M3/M3+ with k = 4: % of runs that used the fallback (A1 for M3, M1 for M3+)")
     print(f"{'n':>5} {'k':>2}  {'algorithm':<9} {'runs':>5} {SAT:>5} {UNSAT:>6} {FAILED:>7} "
           f"{TIMEOUT:>8} {'finished':>9} {'success':>8} {'fallback':>9}")
     for row in summary:
@@ -1240,14 +1394,15 @@ ALGORITHMS = {
     "BT+MRV": (bt_mrv, True),
     "BT+FC": (bt_fc, True),
     "M3": (structure_aware_solver, True),
+    "M3+": (structure_aware_solver_plus, True),
 }
 
 
 # =============================================================================
 # BLOCK 4: MAIN (Jeannice)
 # =============================================================================
-COMPARED_ALGORITHMS = ("A1", "A2", "A3", "M3")      # baseline + the three methods
-REPORT_NAMES = {"A1": "Baseline", "A2": "M1", "A3": "M2", "M3": "M3"}
+COMPARED_ALGORITHMS = ("A1", "A2", "A3", "M3", "M3+")   # baseline, 3 methods, M3+
+REPORT_NAMES = {"A1": "Baseline", "A2": "M1", "A3": "M2", "M3": "M3", "M3+": "M3+"}
 
 
 def demo_single_map(n, seed=42):
