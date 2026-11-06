@@ -2,7 +2,7 @@
 
 CSCI323 Modern AI, Group 17. Topic: Constraint Satisfaction Problems
 
-This document explains what the project asks for, how the program works, the methods and the theory behind them, the final experiments, and who did what. All final numbers come from the four CSV files in [`final_results/`](final_results/) (5,290 runs), the same files the report uses.
+This document explains what the project asks for, how the program works, the methods and the theory behind them, the final experiments, and who did what. All final numbers come from the four CSV files in [`final_results/`](final_results/) (5,290 runs), the same files the report uses. M3+, which we added after the presentation, has its own file there (Section 5.8).
 
 ---
 
@@ -115,6 +115,19 @@ Where each part of M3 comes from:
 | A triangulated disc is 3-colourable ⇔ every inner city has even degree | Popescu (2021)                                                                                                   |
 | **New in this project**                                              | Putting these known techniques together with a complete fallback in one solver, and testing it on the generated maps. The parity result itself is not new |
 
+### M3+: improved M3 (added after the presentation)
+
+At the presentation our tutor asked if M3 could be made better, so we measured where M3 actually spends its effort. With 4 colours, the Kempe swaps were 65% to 91% of its checks (n = 50 to 200), and working out the smallest-last order was about 40% of its time. With 3 colours, most of the time went into listing every triangle at the start, even though most maps hit a conflict within about 60 checks. The A1 fallback never ran, so adding more backtracking wouldn't have changed anything.
+
+M3+ uses the same ideas as M3 but cuts out work that wasn't needed:
+
+- Kempe swaps. Swapping colours a and b on a chain only frees a if all of the city's a-coloured neighbours are in the chain and none of its b-coloured ones are. So M3+ builds one chain per colour pair, stops as soon as the chain reaches a b-coloured neighbour, and only swaps when it will work. M3 swapped first, checked, and swapped back if it failed. M3+ tries the pairs in the same order, so it ends up with the same colouring as M3, just with fewer checks.
+- Smallest-last order. Same order, but it uses a heap to find the next city instead of scanning all the remaining ones each time (O(m log n) instead of O(n²)).
+- Triangle propagation (k = 3). Triangles are only found when propagation gets to them. The visiting order doesn't change the answer (the lemma in Section 4.2), but the check count can go up or down a little.
+- Fallback. M1 instead of A1. It never ran in our tests either, but if it ever did, M1 can handle big maps where A1 times out. When we forced it at n = 200 it took 0.05 s.
+
+We didn't change M3 itself, so all the other results in this document are still about M3.
+
 ---
 
 ## 4. Theory
@@ -184,6 +197,8 @@ Every map could be coloured with four colours. These are ten-map samples, so the
 | `results_ablation.csv` | every integer n from 5 to 50; k = 3 and 4; A1, A2, BT+MRV, BT+FC | 3,680 |
 | **Total** | | **5,290** |
 
+There is also a fifth file, `results_m3plus.csv` (360 rows), that compares M3 with M3+. See Section 5.8.
+
 Each study uses ten maps per n, and every method in a study sees the same maps. Complete methods run once per map and palette, with run seed 0. A3 runs five times with run seeds 0 to 4, so its 50 runs per size and palette are ten maps times five runs, not 50 different maps.
 
 Every run has a 30-second time limit. The limit is checked inside the loops, so it is not a hard cutoff. Main and larger-map A3 runs use `max_steps=1000, max_restarts=9`; the no-restart study uses `max_steps=10000, max_restarts=0`. Both allow at most 10,000 repairs per run, but restarts take extra time to set up a new random colouring.
@@ -248,7 +263,7 @@ At n = 50 with k = 4, A2 used 2,204 checks, BT+MRV 8,552 and BT+FC 358,731. Acro
 
 ### 5.6 Data and source code
 
-The four final CSVs are in [`final_results/`](final_results/); its README explains every column. They are our own runs, made with the solver in `multi_city_lighting.py` at commit `398f10c03914a89ee3ed11c0c6092ed5955e150e` (the file is the same at `73d83a0`, the checkout used for the runs). At that commit the file's SHA-256 is `ed01f3eb5993378f43ebe47acaaec8a5c48c091c766b764cd67a92bf5358c3bc` with LF line endings. Later commits only changed comments and docstrings, so the current file has a different hash but runs the same code. Timing depends on the machine, so a rerun will not match every runtime or timeout (see Section 9.4).
+The four final CSVs are in [`final_results/`](final_results/); its README explains every column. They are our own runs, made with the solver in `multi_city_lighting.py` at commit `398f10c03914a89ee3ed11c0c6092ed5955e150e` (the file is the same at `73d83a0`, the checkout used for the runs). At that commit the file's SHA-256 is `ed01f3eb5993378f43ebe47acaaec8a5c48c091c766b764cd67a92bf5358c3bc` with LF line endings. Later commits rewrote comments and docstrings and added M3+ (Section 5.8). Every method used for the four final CSVs runs exactly the same code as before, so the current file has a different hash but gives the same results. Timing depends on the machine, so a rerun will not match every runtime or timeout (see Section 9.4).
 
 ### 5.7 Same-map comparison
 
@@ -288,6 +303,24 @@ Time per check (mean runtime divided by mean checks, in microseconds) explains m
 
 The check counts are the same on any machine; the times are from one machine.
 
+### 5.8 M3+ against M3
+
+`final_results/results_m3plus.csv` has M3 and M3+ on the same 90 study maps (n = 5 to 200, ten maps per size), with k = 3 and 4. That's 360 rows, and each run is timed once like in the main study. We ran it on a different machine from the four final CSVs, so don't compare its times with Section 5.3. As a check, its 180 M3 rows have the same status and counters as the final CSVs.
+
+| n | k = 4 checks: M3 → M3+ | k = 4 time (ms): M3 → M3+ | k = 3 time (ms): M3 → M3+ |
+| --- | --- | --- | --- |
+| 20 | 142 → 124 | 0.145 → 0.144 | 0.124 → 0.057 |
+| 50 | 766 → 455 | 0.736 → 0.806 | 0.268 → 0.077 |
+| 100 | 3,071 → 1,122 | 1.481 → 0.756 | 0.315 → 0.039 |
+| 150 | 8,737 → 2,746 | 3.424 → 1.459 | 0.499 → 0.049 |
+| 200 | 12,699 → 3,538 | 5.274 → 1.760 | 0.817 → 0.061 |
+
+With 4 colours, M3+ gave the same colouring as M3 on every map and never used more checks. From n = 50 it used 41% to 72% fewer checks on average, and from n = 75 it was faster on every map. Below that the runs take less than a millisecond, so one timing is noisy. At n = 50 it was only faster on 7 of the 10 maps.
+
+With 3 colours it gave the same answer on every map and was about 2 to 13 times faster from n = 20 (faster on 89 of the 90 maps). On average the check count stayed within 3 of M3's.
+
+Neither method ever used its fallback. We also ran both on 9,256 extra random maps (n = 1 to 250): M3+ always agreed with M3, gave the same 4-colour colouring, and never used more checks with 4 colours.
+
 ---
 
 ## 6. Code structure
@@ -298,6 +331,7 @@ The whole program is in **one file**, `multi_city_lighting.py`, split into block
 | --------------------------- | --------------- | ---------------------------------------------------------------------------------- |
 | 0. Shared                   | Jeannice        | colours, statuses, `MapColouringCSP`, `verify_solution`, `run_algorithm`           |
 | 1. Map, baseline, M3, plots | Jeannice        | map generation and validation, parity check, A1, M3, `plot_map`, `plot_comparison` |
+| 1.5b M3+                    | Steven          | `structure_aware_solver_plus` and its helpers (`_m3plus_*`)                         |
 | 2. M1                       | Hong Shen       | MRV/Degree, LCV, forward checking, `backtracking_generic`, `BT+MRV`, `BT+FC`       |
 | 3. M2 and experiments       | Edric, Steven   | `min_conflicts`, `determine_instance_status` (Edric); `run_experiment`, `summarise_results` (Steven) |
 | Registry                    | Everyone        | `ALGORITHMS`: name → (function, is_complete)                                       |
@@ -327,7 +361,7 @@ From the commit history:
 - **Jeannice Laurensia Santoso:** the first version of the program, map generation and validation, the parity check, A1, M3, the plots and the demo.
 - **Huang Hong Shen:** M1 (A2) and the BT+MRV and BT+FC ablation variants.
 - **Edric Andrze Joey:** M2 (Min-Conflicts), the instance status rules, passing the restart budget through the experiment runner, and the final experiment runs in `final_results/`.
-- **Steven Tanuwidjaja:** `run_experiment` and `summarise_results`, saving results after every map, merging the branches, and the reproduction run on a second machine.
+- **Steven Tanuwidjaja:** `run_experiment` and `summarise_results`, saving results after every map, merging the branches, the reproduction run on a second machine, and M3+.
 - **Brandon Lie and Seyu Wen Bin** worked on the parts outside the code.
 
 Section 5 of the report gives each member's full contribution and percentage.
@@ -380,7 +414,7 @@ python multi_city_lighting.py
 # Enter the number of cities n: 20
 ```
 
-The demo uses map seed 42 and runs A1, M1, M2 and M3 with k = 3 and k = 4. M2 uses its default of one attempt of 10,000 repairs, not the restart settings of the final experiments. The program prints each method's result and saves the maps as PNG files in the current folder. On k = 3 maps that cannot be coloured with three colours, the inner cities with an odd number of neighbours are ringed in red. Set `SHOW_PLOTS = True` to open the plots in windows. UNSAT for k = 3 is the expected answer on most maps.
+The demo uses map seed 42 and runs A1, M1, M2, M3 and M3+ with k = 3 and k = 4. M2 uses its default of one attempt of 10,000 repairs, not the restart settings of the final experiments. The program prints each method's result and saves the maps as PNG files in the current folder. On k = 3 maps that cannot be coloured with three colours, the inner cities with an odd number of neighbours are ringed in red. Set `SHOW_PLOTS = True` to open the plots in windows. UNSAT for k = 3 is the expected answer on most maps.
 
 ### 9.1 Quick check
 
@@ -422,6 +456,12 @@ Ablation, every integer n from 5 to 50, 3,680 rows:
 
 ```powershell
 python -c "import multi_city_lighting as m; rows=m.run_experiment(list(range(5,51)),trials=10,algorithms=('A1','A2','BT+MRV','BT+FC'),timeout_seconds=30,csv_path='my_results/results_ablation.csv'); m.summarise_results(rows)"
+```
+
+M3 against M3+, 360 rows, under a minute:
+
+```powershell
+python -c "import multi_city_lighting as m; rows=m.run_experiment([5,10,20,30,50,75,100,150,200],trials=10,algorithms=('M3','M3+'),timeout_seconds=30,csv_path='my_results/results_m3plus.csv'); m.summarise_results(rows)"
 ```
 
 The runner saves the CSV after every map, so a file can exist even if a run was stopped early. Check the row counts above to see whether a study finished.
