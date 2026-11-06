@@ -82,7 +82,7 @@ Cities are coloured in order 0, 1, 2, …, trying the colours in a fixed order a
 - **LCV:** try first the colour that removes the fewest options from the neighbours.
 - **Forward checking:** after each assignment, remove that colour from the neighbours, and go back as soon as a neighbour has no colours left.
 
-Sources: Haralick & Elliott (1980) for forward checking, and Russell & Norvig (2021) for MRV, Degree and LCV.
+Sources: Bessiere (2006) for forward checking, and Russell & Norvig (2021) for MRV, Degree and LCV.
 
 ### M2: Min-Conflicts (A3)
 
@@ -134,7 +134,7 @@ We didn't change M3 itself, so all the other results in this document are still 
 
 ### 4.1 k = 4
 
-The generated maps are planar, so a 4-colouring **always exists** (Four Colour Theorem; Thomas, n.d.). Every k = 4 instance is solvable, so a method that does not find a colouring has timed out or failed.
+The generated maps are planar, so a 4-colouring **always exists** (Four Colour Theorem; Gonthier, 2008). Every k = 4 instance is solvable, so a method that does not find a colouring has timed out or failed.
 
 ### 4.2 k = 3
 
@@ -372,15 +372,21 @@ Section 5 of the report gives each member's full contribution and percentage.
 
 The same list as the report.
 
+Aardal, K. I., van Hoesel, S. P. M., Koster, A. M. C. A., Mannino, C., & Sassano, A. (2007). Models and solution techniques for frequency assignment problems. *Annals of Operations Research, 153*, 79–129. https://doi.org/10.1007/s10479-007-0178-0
+
+Bessiere, C. (2006). Constraint propagation. In F. Rossi, P. van Beek, & T. Walsh (Eds.), *Handbook of constraint programming* (pp. 29–83). Elsevier. https://doi.org/10.1016/S1574-6526(06)80007-6
+
 Constraint satisfaction problems (Lecture slides 6). (n.d.). CSCI323 Modern Artificial Intelligence, University of Wollongong.
 
-Hale, W. K. (1980). Frequency assignment: Theory and applications. *Proceedings of the IEEE, 68*(12), 1497–1514. https://doi.org/10.1109/PROC.1980.11899
+Galinier, P., & Hertz, A. (2006). A survey of local search methods for graph coloring. *Computers & Operations Research, 33*(9), 2547–2562. https://doi.org/10.1016/j.cor.2005.07.028
 
-Haralick, R. M., & Elliott, G. L. (1980). Increasing tree search efficiency for constraint satisfaction problems. *Artificial Intelligence, 14*(3), 263–313. https://doi.org/10.1016/0004-3702(80)90051-X
+Gomes, C. P., Selman, B., Crato, N., & Kautz, H. (2000). Heavy-tailed phenomena in satisfiability and constraint satisfaction problems. *Journal of Automated Reasoning, 24*, 67–100. https://doi.org/10.1023/A:1006314320276
+
+Gonthier, G. (2008). Formal proof—The four-color theorem. *Notices of the American Mathematical Society, 55*(11), 1382–1393. https://www.ams.org/notices/200811/tx081101382p.pdf
 
 Kempe, A. B. (1879). On the geographical problem of the four colours. *American Journal of Mathematics, 2*(3), 193–200. https://doi.org/10.2307/2369235
 
-Matplotlib Development Team. (n.d.). *Quick start guide*. Matplotlib documentation. Retrieved November 1, 2026, from https://matplotlib.org/stable/users/explain/quick_start.html
+Lewis, R. M. R. (2021). *A guide to graph colouring: Algorithms and applications* (2nd ed.). Springer. https://doi.org/10.1007/978-3-030-81054-2
 
 Matula, D. W., & Beck, L. L. (1983). Smallest-last ordering and clustering and graph coloring algorithms. *Journal of the ACM, 30*(3), 417–427. https://doi.org/10.1145/2402.322385
 
@@ -388,19 +394,13 @@ Minton, S., Johnston, M. D., Philips, A. B., & Laird, P. (1992). Minimizing conf
 
 Mount, D. (2021). *CMSC 754 lecture 11: Delaunay triangulations: General properties* [Lecture notes]. University of Maryland. https://www.cs.umd.edu/class/fall2021/cmsc754/Lects/lect11-delaun-prop.pdf
 
-NumPy Developers. (n.d.). *Random generator*. NumPy documentation. Retrieved November 1, 2026, from https://numpy.org/doc/stable/reference/random/generator.html
-
 Popescu, C. (2021). On vertex 3-colourable disc triangulations. *Bulletin Mathématique de la Société des Sciences Mathématiques de Roumanie, 64(112)*(2), 133–145. https://rms.unibuc.ro/bulletin/pdf/64-2/articol_2.pdf
 
-Python Software Foundation. (n.d.). *random — Generate pseudo-random numbers*. Python documentation. Retrieved November 1, 2026, from https://docs.python.org/3/library/random.html
+Qu, R., Burke, E. K., McCollum, B., Merlot, L. T. G., & Lee, S. Y. (2009). A survey of search methodologies and automated system development for examination timetabling. *Journal of Scheduling, 12*(1), 55–89. https://doi.org/10.1007/s10951-008-0077-5
 
 Russell, S., & Norvig, P. (2021). *Artificial intelligence: A modern approach* (4th ed.). Pearson.
 
 SciPy Developers. (n.d.). *Delaunay*. SciPy documentation. Retrieved November 1, 2026, from https://docs.scipy.org/doc/scipy/reference/generated/scipy.spatial.Delaunay.html
-
-Thomas, R. (n.d.). *The four color theorem*. Georgia Institute of Technology. Retrieved November 1, 2026, from https://thomas.math.gatech.edu/FC/fourcolor.html
-
-Welsh, D. J. A., & Powell, M. B. (1967). An upper bound for the chromatic number of a graph and its application to timetabling problems. *The Computer Journal, 10*(1), 85–86. https://doi.org/10.1093/comjnl/10.1.85
 
 ---
 
